@@ -1,0 +1,48 @@
+import { diaAnterior, formatarData, vigenteEm } from '@/lib/datas';
+import { ErroDeDominio } from '@/lib/erros';
+
+export interface ComVigencia {
+  vigenteDe: Date;
+  vigenteAte: Date | null;
+}
+
+/**
+ * Resolve a regra que valia NA DATA DO FATO (Princípio 4). Nunca "hoje" implícito.
+ * Mais de uma vigente é violação de integridade (o banco impede com EXCLUDE) e interrompe o cálculo.
+ */
+export function resolverVigente<T extends ComVigencia>(lista: readonly T[], data: Date): T | null {
+  const validas = lista.filter((r) => vigenteEm(data, r.vigenteDe, r.vigenteAte));
+  if (validas.length > 1) {
+    throw new ErroDeDominio(`Mais de uma vigência válida em ${formatarData(data)} — integridade violada.`, 'VIGENCIA_DUPLICADA');
+  }
+  return validas[0] ?? null;
+}
+
+export interface PlanoNovaVigencia {
+  /** Data a gravar como vigenteAte da vigência atual (dia anterior ao início da nova), ou null se nada a encerrar. */
+  encerrarAtualEm: Date | null;
+}
+
+/**
+ * Princípio 3: alterar uma regra encerra a vigência atual no dia anterior e abre outra.
+ * Nunca sobrescreve: se a nova começaria no mesmo dia ou antes da atual, é recusada.
+ */
+export function planejarNovaVigencia(atual: ComVigencia | null, inicioNova: Date): PlanoNovaVigencia {
+  if (!atual) return { encerrarAtualEm: null };
+  if (inicioNova.getTime() <= atual.vigenteDe.getTime()) {
+    throw new ErroDeDominio(
+      `A nova vigência precisa começar depois de ${formatarData(atual.vigenteDe)} (início da vigência atual). ` +
+        'Alterar a regra não reescreve o passado.',
+      'VIGENCIA_RETROATIVA',
+    );
+  }
+  if (atual.vigenteAte !== null && atual.vigenteAte.getTime() < inicioNova.getTime()) {
+    return { encerrarAtualEm: null };
+  }
+  return { encerrarAtualEm: diaAnterior(inicioNova) };
+}
+
+/** Vigência começando no futuro não vale para venda nenhuma hoje. */
+export function ehVigenciaFutura(v: ComVigencia, hoje: Date): boolean {
+  return v.vigenteDe.getTime() > hoje.getTime();
+}

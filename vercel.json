@@ -3,5 +3,5 @@
   "framework": "nextjs",
   "buildCommand": "prisma migrate deploy && npm run build",
   "regions": ["gru1"],
-  "crons": [{ "path": "/cron/fila", "schedule": "0 * * * *" }]
+  "crons": [{ "path": "/cron/fila", "schedule": "0 9 * * *" }]
 }

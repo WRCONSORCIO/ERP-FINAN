@@ -103,7 +103,7 @@ Fluxo: **Enviar e ler** (guarda linhas e erros, confere contra o total do rodap�
 
 1. Crie o projeto na Supabase (PostgreSQL 16). A extensão `btree_gist` é criada pela migration.
 2. Na Vercel, importe o repositório e configure `DATABASE_URL` (pooler), `DIRECT_URL` (direta), `AUTH_SECRET` e, opcionalmente, `CRON_SECRET`.
-3. O `vercel.json` roda `prisma migrate deploy && npm run build` no build (região `gru1`) e agenda `/cron/fila` de hora em hora.
+3. O `vercel.json` roda `prisma migrate deploy && npm run build` no build (região `gru1`) e agenda `/cron/fila` uma vez por dia, às 06h de Brasília (09h UTC) — limite do plano Hobby da Vercel. No plano Pro dá para usar `0 * * * *` (de hora em hora). Em qualquer plano, o botão "Apurar tudo" em Importações processa a fila na hora.
 4. Depois do primeiro deploy, com as variáveis apontando para produção, rode **uma vez** localmente: `npm run db:seed` (defina `CARGA_VIGENCIA_INICIO` conforme a decisão da WR) e `npm run db:criar-admin`.
 5. Nunca aponte `.env.test` para o banco de produção: a suíte de integração apaga tabelas (e se recusa a rodar sem "test" no nome do banco).
 

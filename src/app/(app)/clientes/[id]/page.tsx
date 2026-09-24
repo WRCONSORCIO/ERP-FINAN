@@ -58,7 +58,7 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
         </dl>
       </Secao>
 
-      <Secao titulo="Congelado na venda" descricao={`Nada disto muda com o cadastro atual. Congelado em ${formatarDataHora(cota.snapCongeladoEm)} por ${cota.snapOrigem?.toLowerCase() ?? '—'}. Só importação (criação), transferência e recongelamento alteram este bloco.`}>
+      <Secao titulo="Congelado na venda" descricao={`Nada disto muda com o cadastro atual. Congelado em ${formatarDataHora(cota.snapCongeladoEm)} por ${({ IMPORTACAO: 'importação', TRANSFERENCIA: 'transferência', RECONGELAMENTO: 'recongelamento' } as Record<string, string>)[cota.snapOrigem ?? ''] ?? '—'}. Só importação (criação), transferência e recongelamento alteram este bloco.`}>
         <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <Item rotulo="Vendedor">{cota.snapVendedor ? <Link href={`/vendedores/${cota.snapVendedor.pessoaId}`}>{cota.snapVendedor.pessoa.nome}</Link> : <Etiqueta tom="ambar">sem vendedor</Etiqueta>}{cota.snapVendedor ? <span className="numero block text-[11px] text-wr-texto-3">{cota.snapVendedor.tipoDocumento} {formatarDocumento(cota.snapVendedor.documento)}</span> : null}</Item>
           <Item rotulo="Categoria da venda">{cota.snapCategoria ? <>{cota.snapCategoria.nome}<span className="block text-[11px] text-wr-texto-3">paga pela WR: {cota.snapPagaPelaWr ? 'sim' : 'não'} · supervisão: {cota.snapGeraSupervisao ? 'sim' : 'não'} · gerência: {cota.snapGeraGerencia ? 'sim' : 'não'}</span></> : <Etiqueta tom="ambar">sem categoria</Etiqueta>}</Item>

@@ -143,7 +143,7 @@ describe('fluxo financeiro completo', () => {
     const e = estornos[0]!;
     await movimentarEstorno(admin, { estornoId: e.id, para: 'EM_COBRANCA', forma: 'DESCONTO_EM_FOLHA', referencia: 'folha out/26', motivo: 'combinado com o vendedor' });
     await movimentarEstorno(admin, { estornoId: e.id, para: 'QUITADO', valor: '800.00', referencia: 'recibo 9', motivo: 'quitado' });
-    await expect(movimentarEstorno(admin, { estornoId: e.id, para: 'PERDOADO', motivo: 'tentativa' })).rejects.toThrow();
+    await expect(movimentarEstorno(admin, { estornoId: e.id, para: 'PERDOADO', referencia: null, motivo: 'tentativa' })).rejects.toThrow();
     await expect(prisma.estorno.update({ where: { id: e.id }, data: { status: 'INVALIDADO', invalidadoEm: new Date() } })).rejects.toThrow();
     expect(await prisma.estornoMovimento.count({ where: { estornoId: e.id } })).toBe(3);
   });

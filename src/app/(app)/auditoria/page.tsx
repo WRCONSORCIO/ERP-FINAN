@@ -7,13 +7,16 @@ import { exigirPagina } from '@/servidor/sessao';
 import { paginaDe, param, POR_PAGINA, type Params } from '@/servidor/consultas/comum';
 import { Campo, EstadoVazio, Etiqueta, LinkBotao, Pagina, Secao, Traco, classeBotao } from '@/ui/base';
 import { Paginacao, queryDe } from '@/ui/paginacao';
+import { Bloco } from '@/ui/memoria';
 
 export const metadata: Metadata = { title: 'Auditoria' };
 export const dynamic = 'force-dynamic';
 
+/** Antes/depois legíveis: chave → valor, ausente vira travessão (nunca "null"). */
 function Json({ v }: { v: Prisma.JsonValue | null }) {
-  if (v === null) return <Traco />;
-  return <pre className="numero max-h-56 max-w-[420px] overflow-auto whitespace-pre-wrap break-all rounded bg-wr-fundo p-2 text-[11px]">{JSON.stringify(v, null, 2)}</pre>;
+  if (v === null || v === undefined) return <Traco />;
+  if (typeof v !== 'object' || Array.isArray(v)) return <span className="numero text-[12px]">{Array.isArray(v) ? v.join(', ') : String(v)}</span>;
+  return <div className="max-h-56 max-w-[420px] overflow-auto"><Bloco dados={v as Record<string, unknown>} /></div>;
 }
 
 export default async function Auditoria({ searchParams }: { searchParams: Promise<Params> }) {

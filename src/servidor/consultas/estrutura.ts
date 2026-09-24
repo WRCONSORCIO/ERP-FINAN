@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { hoje, vigenteEm } from '@/lib/datas';
+import { pode } from '@/lib/permissoes';
 import { escopoEquipes, escopoGerencias, exigir, type Sessao } from '../contexto';
 
 export async function arvoreDaEstrutura(s: Sessao) {
@@ -36,7 +37,8 @@ export async function arvoreDaEstrutura(s: Sessao) {
       gerenciasSemGerente: ativas.filter((g) => !g.gerenteAtual).length,
       supervisoesSemSupervisor: equipesAtivas.filter((e) => !e.supervisorAtual).length,
     },
-    pessoas: await prisma.pessoa.findMany({ orderBy: { nome: 'asc' }, select: { id: true, nome: true }, take: 3000 }),
-    administradoras: await prisma.administradora.findMany({ orderBy: { nome: 'asc' } }),
+    // Listas de edição só para quem edita (não trafegam para quem só vê).
+    pessoas: pode(s.perfil, 'equipes', 'editar') ? await prisma.pessoa.findMany({ orderBy: { nome: 'asc' }, select: { id: true, nome: true }, take: 3000 }) : [],
+    administradoras: pode(s.perfil, 'gerencias', 'editar') ? await prisma.administradora.findMany({ orderBy: { nome: 'asc' } }) : [],
   };
 }

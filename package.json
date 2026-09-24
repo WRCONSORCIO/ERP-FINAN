@@ -19,7 +19,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:criar-admin": "tsx scripts/criar-admin.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:demo": "tsx scripts/demonstracao.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

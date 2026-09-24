@@ -5,7 +5,7 @@ import { COOKIE_SESSAO, lerToken } from '@/lib/sessao-token';
  * Primeira barreira: sem token válido, nenhuma rota interna abre. É só um atalho —
  * cada tela e cada Server Action reconferem a sessão no banco (perfil, escopo, ativo).
  */
-const PUBLICAS = ['/login'];
+const PUBLICAS = ['/login', '/cron'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

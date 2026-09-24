@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
-import { formatarMoeda, somar } from '@/lib/dinheiro';
+import { formatarMoeda, formatarPercentual, somar } from '@/lib/dinheiro';
 import { formatarData, periodoDosParametros, rotuloMesLongo } from '@/lib/datas';
 import { formatarDocumento } from '@/lib/documento';
 import { log } from '@/lib/log';
@@ -149,13 +149,13 @@ async function gerar(tipo: string, s: Sessao, sp: Params, formato: string): Prom
           {
             titulo: 'Comissões',
             colunas: [{ titulo: 'Venda', largura: 60 }, { titulo: 'Cliente', largura: 170 }, { titulo: 'Cota', largura: 62 }, { titulo: 'Crédito', largura: 86, direita: true }, { titulo: 'Flex', largura: 55 }, { titulo: 'Papel', largura: 64 }, { titulo: 'Parc.', largura: 34, direita: true }, { titulo: '%', largura: 50, direita: true }, { titulo: 'Comissão', largura: 80, direita: true }, { titulo: 'Paga por', largura: 70 }, { titulo: 'Situação', largura: 47 }],
-            linhas: e.comissoes.map((c) => [formatarData(c.cota.dataVenda), c.cota.clienteNome, `${c.cota.grupo}/${c.cota.cota}`, formatarMoeda(c.cota.credito), c.cota.snapModalidadeFlex?.nome ?? '-', ROTULO_DESTINO[c.destino as Destino] + (c.ajusteDeId ? ' (aj.)' : ''), `${c.parcela}`, c.percentual.toFixed(4).replace('.', ',') + '%', formatarMoeda(c.valor), c.pagaPelaWr ? 'WR' : 'administradora', ROTULO_COMISSAO[c.status] ?? '']),
-            total: ['Total pago pela WR', '', '', '', '', '', '', '', formatarMoeda(e.totalComissao), '', ''],
+            linhas: e.comissoes.map((c) => [formatarData(c.cota.dataVenda), c.cota.clienteNome, `${c.cota.grupo}/${c.cota.cota}`, formatarMoeda(c.cota.credito), c.cota.snapModalidadeFlex?.nome ?? '-', ROTULO_DESTINO[c.destino as Destino] + (c.ajusteDeId ? ' (aj.)' : ''), `${c.parcela}`, formatarPercentual(c.percentual), formatarMoeda(c.valor), c.pagaPelaWr ? 'WR' : 'administradora', ROTULO_COMISSAO[c.status] ?? '']),
+            total: ['Total WR', '', '', '', '', '', '', '', formatarMoeda(e.totalComissao), '', ''],
           },
           {
             titulo: 'Estornos',
             colunas: [{ titulo: 'Cancelamento', largura: 70 }, { titulo: 'Cliente', largura: 200 }, { titulo: 'Cota', largura: 70 }, { titulo: 'Tipo', largura: 80 }, { titulo: 'Comissão base', largura: 100, direita: true }, { titulo: '%', largura: 60, direita: true }, { titulo: 'Valor', largura: 100, direita: true }, { titulo: 'Situação', largura: 98 }],
-            linhas: e.estornos.map((x) => [formatarData(x.dataEvento), x.cota.clienteNome, `${x.cota.grupo}/${x.cota.cota}`, x.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento', formatarMoeda(x.comissaoBase), x.percentual.toFixed(4).replace('.', ',') + '%', formatarMoeda(x.valor), ROTULO_ESTORNO[x.status] ?? '']),
+            linhas: e.estornos.map((x) => [formatarData(x.dataEvento), x.cota.clienteNome, `${x.cota.grupo}/${x.cota.cota}`, x.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento', formatarMoeda(x.comissaoBase), formatarPercentual(x.percentual), formatarMoeda(x.valor), ROTULO_ESTORNO[x.status] ?? '']),
             total: ['Total', '', '', '', '', '', formatarMoeda(e.totalEstorno), ''],
           },
         ],

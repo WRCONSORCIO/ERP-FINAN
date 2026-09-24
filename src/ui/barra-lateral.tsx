@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Icone, type NomeIcone } from './icones';
+import { IndicadorLink } from './indicador-link';
 
 export interface ItemMenu {
   href: string;
@@ -53,6 +54,7 @@ function Navegacao({ itens, recolhida, aoNavegar }: { itens: ItemMenu[]; recolhi
                   >
                     <Icone nome={i.icone} tamanho={18} className="shrink-0" />
                     {!recolhida ? <span className="flex-1 truncate">{i.rotulo}</span> : null}
+                    <IndicadorLink claro />
                     {i.contador && i.contador > 0 ? (
                       <span className={`numero rounded-full bg-wr-vermelho px-1.5 text-[10px] font-bold leading-4 text-white ${recolhida ? 'absolute ml-4 -mt-4' : ''}`}>
                         {i.contador > 999 ? '999+' : i.contador}

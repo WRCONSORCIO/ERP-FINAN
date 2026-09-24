@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { formatarDataHora } from '@/lib/datas';
 import { formatarDocumento, somenteDigitos } from '@/lib/documento';
 import { exigirPagina } from '@/servidor/sessao';
+import { registrarLeituraDadoPessoal } from '@/servidor/auditoria';
 import { param, type Params } from '@/servidor/consultas/comum';
 import { Aviso, Campo, EstadoVazio, Etiqueta, Pagina, Secao, classeBotao } from '@/ui/base';
 import { FormularioAcao } from '@/ui/formulario-acao';
@@ -12,7 +13,7 @@ export const metadata: Metadata = { title: 'LGPD' };
 export const dynamic = 'force-dynamic';
 
 export default async function Lgpd({ searchParams }: { searchParams: Promise<Params> }) {
-  await exigirPagina('usuarios', 'tudo');
+  const s = await exigirPagina('usuarios', 'tudo');
   const sp = await searchParams;
   const titular = somenteDigitos(param(sp, 'titular'));
   const [solicitacoes, acessos, cotasTitular] = await Promise.all([
@@ -20,6 +21,7 @@ export default async function Lgpd({ searchParams }: { searchParams: Promise<Par
     prisma.acessoDadoPessoal.findMany({ orderBy: { criadoEm: 'desc' }, take: 100 }),
     titular.length >= 11 ? prisma.cota.findMany({ where: { cpfCliente: titular }, select: { id: true, clienteNome: true, grupo: true, cota: true, clienteEmail: true, clienteTelefone: true, anonimizadaEm: true } }) : Promise.resolve([]),
   ]);
+  if (titular.length >= 11) await registrarLeituraDadoPessoal(prisma, s, 'Titular', titular, 'atendimento LGPD: consulta de dados do titular');
   const usuarios = new Map((await prisma.usuario.findMany({ where: { id: { in: [...new Set(acessos.map((a) => a.usuarioId))] } }, select: { id: true, nome: true } })).map((u) => [u.id, u.nome]));
   return (
     <Pagina titulo="LGPD" descricao="Registro de quem consultou dado pessoal, atendimento a pedidos de titular e anonimização de contato. Registros financeiros auditáveis não são apagados: há obrigação de retenção.">
@@ -75,7 +77,7 @@ export default async function Lgpd({ searchParams }: { searchParams: Promise<Par
         {acessos.length === 0 ? <EstadoVazio titulo="Nenhuma consulta registrada" /> : (
           <div className="tabela-quadro"><table className="tabela">
             <thead><tr><th>Data</th><th>Usuário</th><th>Registro</th><th>Finalidade</th></tr></thead>
-            <tbody>{acessos.map((a) => <tr key={String(a.id)}><td className="numero">{formatarDataHora(a.criadoEm)}</td><td>{usuarios.get(a.usuarioId) ?? a.usuarioId}</td><td>{a.entidade} <a href={`/clientes/${a.entidadeId}`} className="numero text-[11px]">{a.entidadeId}</a></td><td>{a.finalidade}</td></tr>)}</tbody>
+            <tbody>{acessos.map((a) => <tr key={String(a.id)}><td className="numero">{formatarDataHora(a.criadoEm)}</td><td>{usuarios.get(a.usuarioId) ?? a.usuarioId}</td><td>{a.entidade} {a.entidade === 'Cota' ? <a href={`/clientes/${a.entidadeId}`} className="numero text-[11px]">{a.entidadeId}</a> : <span className="numero text-[11px]">{formatarDocumento(a.entidadeId)}</span>}</td><td>{a.finalidade}</td></tr>)}</tbody>
           </table></div>
         )}
       </Secao>

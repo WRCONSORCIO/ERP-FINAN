@@ -23,7 +23,7 @@ function valor(v: unknown): ReactNode {
   return <span className="numero whitespace-normal">{String(v)}</span>;
 }
 
-function Bloco({ dados }: { dados: Record<string, unknown> }) {
+export function Bloco({ dados }: { dados: Record<string, unknown> }) {
   return (
     <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-3 gap-y-0.5 rounded border border-wr-borda bg-wr-superficie p-2 text-[12px]">
       {Object.entries(dados).filter(([k]) => k !== 'formula').map(([k, v]) => (

@@ -7,12 +7,12 @@ import { rotuloMesCurto } from '@/lib/datas';
  */
 export function GraficoBarras({ serie, destaque }: { serie: Array<{ competencia: string; valor: Dec }>; destaque: string }) {
   const max = serie.reduce<Dec>((m, x) => (x.valor.gt(m) ? x.valor : m), ZERO);
-  const L = 720;
-  const A = 180;
+  const L = 1200;
+  const A = 150;
   const larg = L / Math.max(serie.length, 1);
   return (
     <figure className="w-full">
-      <svg viewBox={`0 0 ${L} ${A + 28}`} className="h-auto w-full" role="img" aria-label="Produção dos últimos 12 meses">
+      <svg viewBox={`0 0 ${L} ${A + 28}`} className="h-auto w-full max-w-5xl" role="img" aria-label="Produção dos últimos 12 meses">
         <line x1="0" x2={L} y1={A} y2={A} className="stroke-wr-borda" />
         {serie.map((x, i) => {
           const h = !max.isZero() ? Number(x.valor.dividedBy(max).times(A - 18).toFixed(2)) : 0;

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { obterSessao } from '@/servidor/sessao';
+import { log } from '@/lib/log';
 import { Icone } from '@/ui/icones';
 import { FormularioLogin } from './formulario';
 
@@ -16,7 +17,14 @@ function Logo({ claro }: { claro?: boolean }) {
 }
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ expirada?: string }> }) {
-  if (await obterSessao()) redirect('/dashboard');
+  // Se a conferência da sessão falhar (ex.: banco indisponível), a tela de login continua acessível.
+  let logado = false;
+  try {
+    logado = (await obterSessao()) !== null;
+  } catch (e) {
+    log.erro('login.sessao.erro', { erro: e });
+  }
+  if (logado) redirect('/dashboard');
   const { expirada } = await searchParams;
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.3fr_1fr]">

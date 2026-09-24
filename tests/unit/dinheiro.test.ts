@@ -46,3 +46,14 @@ describe('dinheiro (Decimal, ROUND_HALF_UP)', () => {
     expect(lerMoedaTexto(null)).toBeNull();
   });
 });
+
+import { urlDoBanco } from '@/lib/db';
+describe('conexão com o pooler da Supabase', () => {
+  it('acrescenta pgbouncer=true e connection_limit=1 na porta 6543, sem mexer no resto', () => {
+    const u = urlDoBanco('postgresql://postgres.abc:senha@aws-0-sa-east-1.pooler.supabase.com:6543/postgres');
+    expect(u).toContain('pgbouncer=true');
+    expect(u).toContain('connection_limit=1');
+    expect(urlDoBanco('postgresql://u:p@host:6543/db?pgbouncer=true&connection_limit=3')).toContain('connection_limit=3');
+    expect(urlDoBanco('postgresql://u:p@host:5432/db')).toBe('postgresql://u:p@host:5432/db');
+  });
+});

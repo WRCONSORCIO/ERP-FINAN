@@ -245,7 +245,14 @@ export const esquemaConfigEstorno = z.object({
   vigenteDe: zData,
 });
 export const esquemaDefinirEscopo = z.object({ configuracaoId: zId, escopoBase: z.enum(['PARCELAS_RECEBIDAS', 'PRIMEIRA_PARCELA', 'TOTAL_TABELA']) });
-export const esquemaRegraEstorno = z.object({ tipo: z.enum(['RECUPERACAO', 'CANCELAMENTO']), titularVendedorId: zIdOpcional, percentual: zPercentual, vigenteDe: zData });
+export const esquemaRegraEstorno = z.object({
+  tipo: z.enum(['RECUPERACAO', 'CANCELAMENTO']),
+  /** Código da categoria ou SUPERVISAO/GERENCIA; vazio = regra padrão. */
+  participante: z.string().trim().optional().transform((v) => (v ? v : null)),
+  titularVendedorId: zIdOpcional,
+  percentual: zPercentual,
+  vigenteDe: zData,
+});
 
 async function participantesValidos(tx: Tx, lista: string[]): Promise<string[]> {
   const codigos = new Set((await tx.categoriaVendedor.findMany({ select: { codigo: true } })).map((c) => c.codigo));
@@ -300,8 +307,10 @@ export async function definirEscopoBase(s: Sessao, d: z.infer<typeof esquemaDefi
 
 export async function abrirVigenciaRegraEstorno(s: Sessao, d: z.infer<typeof esquemaRegraEstorno>) {
   exigir(s, 'regras', 'editar');
+  if (d.participante && d.titularVendedorId) throw new ErroDeDominio('Escolha a categoria OU o vendedor da exceção, não os dois.');
   return prisma.$transaction(async (tx) => {
-    const atual = await tx.regraEstorno.findFirst({ where: { tipo: d.tipo, titularVendedorId: d.titularVendedorId }, orderBy: { vigenteDe: 'desc' } });
+    if (d.participante) await participantesValidos(tx, [d.participante]);
+    const atual = await tx.regraEstorno.findFirst({ where: { tipo: d.tipo, participante: d.participante, titularVendedorId: d.titularVendedorId }, orderBy: { vigenteDe: 'desc' } });
     const encerrada = await abrirVigencia({
       atual, vigenteDe: d.vigenteDe,
       conflito: async (a) => {
@@ -310,7 +319,7 @@ export async function abrirVigenciaRegraEstorno(s: Sessao, d: z.infer<typeof esq
       },
       encerrar: (id, ate) => tx.regraEstorno.update({ where: { id }, data: { vigenteAte: ate } }),
     });
-    const nova = await tx.regraEstorno.create({ data: { tipo: d.tipo, titularVendedorId: d.titularVendedorId, percentual: d.percentual, vigenteDe: d.vigenteDe, criadoPorId: s.usuarioId } });
+    const nova = await tx.regraEstorno.create({ data: { tipo: d.tipo, participante: d.participante, titularVendedorId: d.titularVendedorId, percentual: d.percentual, vigenteDe: d.vigenteDe, criadoPorId: s.usuarioId } });
     await auditar(tx, { sessao: s, acao: 'ALTERACAO_REGRA', entidade: 'RegraEstorno', entidadeId: nova.id, antes: atual ? { ...atual, vigenteAte: encerrada ?? atual.vigenteAte } : null, depois: nova });
     await reapurarCanceladasComPendencia(tx, 'nova regra de estorno');
     return nova;
@@ -441,7 +450,12 @@ export async function simularRegraEstorno(s: Sessao, d: z.infer<typeof esquemaRe
   exigir(s, 'regras', 'editar');
   const desde = somarDias(hoje(), -92);
   const estornos = await prisma.estorno.findMany({
-    where: { tipo: d.tipo, status: { not: 'INVALIDADO' }, dataEvento: { gte: desde }, ...(d.titularVendedorId ? { titularVendedorId: d.titularVendedorId } : {}) },
+    where: {
+      tipo: d.tipo, status: { not: 'INVALIDADO' }, dataEvento: { gte: desde },
+      ...(d.titularVendedorId ? { titularVendedorId: d.titularVendedorId } : {}),
+      ...(d.participante === 'SUPERVISAO' || d.participante === 'GERENCIA' ? { destino: d.participante }
+        : d.participante ? { destino: 'VENDEDOR', cota: { snapCategoria: { codigo: d.participante } } } : {}),
+    },
     include: { cota: { select: { grupo: true, cota: true, credito: true } } }, take: 5000, orderBy: { dataEvento: 'desc' },
   });
   let totalAtual = ZERO;

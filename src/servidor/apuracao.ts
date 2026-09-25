@@ -318,23 +318,29 @@ async function sincronizarEstornos(
   const tipo = config ? tipoDeEstorno({ cancelada: true, parcelasPagas: cota.parcelasPagas, recuperacao: cota.snapRecuperacao }, config) : null;
 
   const regras = tipo ? await tx.regraEstorno.findMany({ where: { tipo, vigenteDe: { lte: dataCanc } } }) : [];
-  const regraPara = (destino: Destino): RegraEstornoResolvida | null => {
+  /** Precedência: exceção do vendedor › percentual do participante (categoria/supervisão/gerência) › padrão. */
+  const regraPara = (destino: Destino, participante: string): RegraEstornoResolvida | null => {
     const vigentes = regras.filter((r) => r.vigenteDe <= dataCanc && (r.vigenteAte === null || r.vigenteAte >= dataCanc));
     const excecao = destino === 'VENDEDOR' ? vigentes.find((r) => r.titularVendedorId === cota.snapVendedorId) : undefined;
-    const r = excecao ?? resolverVigente(vigentes.filter((x) => x.titularVendedorId === null), dataCanc);
-    return r ? { id: r.id, percentual: dec(r.percentual), excecao: r === excecao, vigenteDe: r.vigenteDe, vigenteAte: r.vigenteAte } : null;
+    const doParticipante = vigentes.find((r) => r.titularVendedorId === null && r.participante === participante);
+    const padrao = resolverVigente(vigentes.filter((x) => x.titularVendedorId === null && x.participante === null), dataCanc);
+    const r = excecao ?? doParticipante ?? padrao;
+    return r ? { id: r.id, percentual: dec(r.percentual), excecao: r === excecao, participante: r.participante, vigenteDe: r.vigenteDe, vigenteAte: r.vigenteAte } : null;
   };
 
   const r = calcularEstornos({
     cota: { id: cota.id, cancelada: true, dataCancelamento: dataCanc, parcelasPagas: cota.parcelasPagas, recuperacao: cota.snapRecuperacao, origemDataCancelamento: cota.origemDataCancelamento },
     config,
-    destinos: destinosDaCategoria(ctx.categoria).map((destino) => ({
+    destinos: destinosDaCategoria(ctx.categoria).map((destino) => {
+      const participante = destino === 'VENDEDOR' ? ctx.categoria!.codigo : destino;
+      return {
       destino,
-      participante: destino === 'VENDEDOR' ? ctx.categoria!.codigo : destino,
+      participante,
       titular: ctx.titulares.get(destino) ?? null,
-      regra: regraPara(destino),
+      regra: regraPara(destino, participante),
       comissoes: ctx.valoresPorDestino.get(destino) ?? null,
-    })),
+      };
+    }),
   });
   for (const p of r.pendencias) pendencias.push({ tipo: p.tipo, destino: p.destino, descricao: p.descricao });
 

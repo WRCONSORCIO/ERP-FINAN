@@ -46,7 +46,7 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     await vendedor(admin, { nome: 'Carla ME', tipo: 'CNPJ', doc: '11222333000181', categoriaId: cat.VETERANO, equipeId: est.equipeId });
     const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
-    await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', titularVendedorId: null, percentual: '30', vigenteDe: D('2026-09-15') });
+    await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: null, titularVendedorId: null, percentual: '30', vigenteDe: D('2026-09-15') });
     await importar(admin, administradoraId, csv([
       { grupo: '2', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '14/09/2026' },
       { grupo: '2', cota: '2', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
@@ -58,7 +58,42 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     expect(atual.percentual.toFixed(2)).toBe('30.00');
     expect(atual.valor.toFixed(2)).toBe('240.00');
     // Não pode abrir vigência que tiraria a regra de estorno já apurado
-    await expect(abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', titularVendedorId: null, percentual: '40', vigenteDe: D('2026-09-18') })).rejects.toThrow(/estorno apurado/);
+    await expect(abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: null, titularVendedorId: null, percentual: '40', vigenteDe: D('2026-09-18') })).rejects.toThrow(/estorno apurado/);
+  });
+
+  it('percentual do estorno por categoria: Expert tem o próprio, Veterano segue o padrão; exceção do vendedor vence a categoria', async () => {
+    const { admin, administradoraId, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    const vet = await vendedor(admin, { nome: 'Carla ME', tipo: 'CNPJ', doc: '11222333000181', categoriaId: cat.VETERANO, equipeId: est.equipeId });
+    await vendedor(admin, { nome: 'Bruno ME', tipo: 'CNPJ', doc: '11444777000161', categoriaId: cat.EXPERT, equipeId: est.equipeId });
+    const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
+    await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
+    await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: 'EXPERT', titularVendedorId: null, percentual: '70', vigenteDe: D('2026-09-10') });
+    await expect(abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: 'NAO_EXISTE', titularVendedorId: null, percentual: '10', vigenteDe: D('2026-09-10') })).rejects.toThrow(/desconhecido/);
+    await expect(abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: 'EXPERT', titularVendedorId: vet.id, percentual: '10', vigenteDe: D('2026-09-10') })).rejects.toThrow(/não os dois/);
+    await importar(admin, administradoraId, csv([
+      { grupo: '4', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
+      { grupo: '4', cota: '2', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11444777000161', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
+      // Cancelada antes da vigência do percentual do Expert: usa o padrão
+      { grupo: '4', cota: '3', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11444777000161', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '05/09/2026' },
+    ]));
+    const estornoDa = (cota: string) => prisma.estorno.findFirstOrThrow({ where: { cota: { cota }, destino: 'VENDEDOR', status: { not: 'INVALIDADO' } } });
+    const [e1, e2, e3] = [await estornoDa('1'), await estornoDa('2'), await estornoDa('3')];
+    expect(e1.percentual.toFixed(2)).toBe('50.00');
+    expect(e2.percentual.toFixed(2)).toBe('70.00');
+    expect(e2.valor.toFixed(2)).toBe(e2.comissaoBase.times(0.7).toFixed(2));
+    expect((e2.memoria as { regra: { participante: string } }).regra.participante).toBe('EXPERT');
+    expect(e3.percentual.toFixed(2)).toBe('50.00');
+
+    // Exceção individual vence o percentual da categoria (e não reescreve o estorno já apurado)
+    await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: null, titularVendedorId: vet.id, percentual: '20', vigenteDe: D('2026-09-21') });
+    await importar(admin, administradoraId, csv([
+      { grupo: '4', cota: '4', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '22/09/2026' },
+    ]));
+    expect((await estornoDa('4')).percentual.toFixed(2)).toBe('20.00');
+    expect((await estornoDa('1')).percentual.toFixed(2)).toBe('50.00');
+    // Sobreposição do mesmo tipo e categoria é barrada pelo banco
+    await expect(prisma.regraEstorno.create({ data: { tipo: 'CANCELAMENTO', participante: 'EXPERT', percentual: '1', vigenteDe: D('2026-09-25') } })).rejects.toThrow();
   });
 
   it('categoria do documento: nova vigência, snapshot antigo intocado e trava contra reescrever venda apurada', async () => {

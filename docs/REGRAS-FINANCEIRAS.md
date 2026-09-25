@@ -29,7 +29,7 @@ valor = base × percentual da parcela no destino
 
 - Só em venda **cancelada**. Tipo: **recuperação** se a venda foi marcada como feita em período de recuperação (tem precedência); senão **cancelamento** se o critério casar (`IGUAL` ou `ABAIXO_DE` o limite de parcelas pagas; limite 0 desliga).
 - **Participantes** por configuração (códigos de categoria e/ou `SUPERVISAO`/`GERENCIA`). Carga inicial: Veterano e Expert.
-- **Percentual** pela regra vigente na **data do cancelamento** (por tipo, com exceção por documento). Carga inicial: 50% e 50%.
+- **Percentual** pela regra vigente na **data do cancelamento**, por tipo. Vale o mais específico: **exceção do vendedor** › **percentual da categoria** (ou supervisão/gerência) › **padrão**. Cada nível tem vigência própria, cadastrada em Configurações › Estornos. Carga inicial: padrão 50% e 50%.
 - **Base** = comissões calculadas com a tabela da **data da venda**, conforme o escopo: parcelas recebidas · só a primeira · total da tabela.
 - Único por (cota, destino) — `ux_estorno_cota_destino`. Estorno em cobrança/quitado/perdoado **nunca** é invalidado (gatilho).
 - **Sem titular** → o estorno é criado como SEM TITULAR, vira pendência e notificação. O dinheiro não some.

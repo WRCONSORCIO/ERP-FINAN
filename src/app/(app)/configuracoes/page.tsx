@@ -62,6 +62,8 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
   const hojeISO = hoje().toISOString().slice(0, 10);
   const configAtual = d.configs.find((c) => vigenteEm(hoje(), c.vigenteDe, c.vigenteAte)) ?? d.configs[0] ?? null;
   const configSemEscopo = d.configs.filter((c) => c.escopoBase === null);
+  const nomeParticipante = (codigo: string) =>
+    codigo === 'SUPERVISAO' ? 'Supervisão' : codigo === 'GERENCIA' ? 'Gerência' : (d.categorias.find((c) => c.codigo === codigo)?.nome ?? codigo);
 
   return (
     <Pagina titulo="Configurações" descricao="Percentuais, metas, critérios de estorno e categorias são cadastro com vigência. Toda alteração abre vigência nova e não reescreve o passado: a regra é resolvida pela data do fato.">
@@ -164,7 +166,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                   <Campo rotulo="Categoria (só vendedor)" nome="categoriaId"><select id="categoriaId" name="categoriaId" className="campo" defaultValue=""><option value="">—</option>{d.categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></Campo>
                   <Campo rotulo="Segmento" nome="segmentoId"><select id="segmentoId" name="segmentoId" className="campo">{d.segmentos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}</select></Campo>
                   <Campo rotulo="Vigente desde" nome="vigenteDe"><input id="vigenteDe" name="vigenteDe" type="date" defaultValue={hojeISO} className="campo" required /></Campo>
-                  <Campo rotulo="Exceção: documento (vendedor)" nome="titularVendedorId"><select id="titularVendedorId" name="titularVendedorId" className="campo" defaultValue=""><option value="">Regra padrão</option>{d.vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome} · {v.tipoDocumento}</option>)}</select></Campo>
+                  <Campo rotulo="Exceção: documento (vendedor)" nome="titularVendedorId"><select id="titularVendedorId" name="titularVendedorId" className="campo" defaultValue=""><option value="">—</option>{d.vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome} · {v.tipoDocumento}</option>)}</select></Campo>
                   <Campo rotulo="Exceção: pessoa (supervisão/gerência)" nome="titularPessoaId"><select id="titularPessoaId" name="titularPessoaId" className="campo" defaultValue=""><option value="">Regra padrão</option>{d.pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></Campo>
                   <Campo rotulo="Observação" nome="observacao" className="lg:col-span-2"><input id="observacao" name="observacao" className="campo" /></Campo>
                 </div>
@@ -225,20 +227,21 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
               </div>
             </Dobra>
           ) : null}
-          <Secao titulo="Percentuais a devolver" descricao="Por tipo e por titular: pode ser 40% na recuperação e 60% no cancelamento do mesmo vendedor. O percentual é o vigente na data do CANCELAMENTO." semPadding>
+          <Secao titulo="Percentuais a devolver" descricao="Por tipo, por categoria e por vendedor. Vale o mais específico: exceção do vendedor, depois o percentual da categoria (ou supervisão/gerência), depois o padrão. O percentual é o vigente na data do CANCELAMENTO." semPadding>
             <div className="tabela-quadro">
               <table className="tabela">
-                <thead><tr><th>Tipo</th><th>Titular</th><th className="direita">Percentual</th><th>Vigência</th></tr></thead>
-                <tbody>{d.regras.map((r) => <tr key={r.id}><td>{r.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento'}</td><td>{r.titularVendedor?.nome ?? 'padrão'}</td><td className="direita"><Percentual valor={r.percentual} /></td><td><Vig de={r.vigenteDe} ate={r.vigenteAte} /></td></tr>)}</tbody>
+                <thead><tr><th>Tipo</th><th>Aplica-se a</th><th className="direita">Percentual</th><th>Vigência</th></tr></thead>
+                <tbody>{d.regras.map((r) => <tr key={r.id}><td>{r.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento'}</td><td>{r.titularVendedor ? <>Vendedor: {r.titularVendedor.nome}</> : r.participante ? nomeParticipante(r.participante) : 'padrão (demais)'}</td><td className="direita"><Percentual valor={r.percentual} /></td><td><Vig de={r.vigenteDe} ate={r.vigenteAte} /></td></tr>)}</tbody>
               </table>
             </div>
           </Secao>
           {editar ? (
             <Secao titulo="Abrir nova vigência de percentual">
               <FormularioComSimulacao salvar={abrirRegraEstornoAcao} simular={simularRegraEstornoAcao} confirmacao="O percentual atual é encerrado no dia anterior e vale só para cancelamentos a partir da data informada.">
-                <div className="grid gap-2 sm:grid-cols-4">
+                <div className="grid gap-2 sm:grid-cols-5">
                   <Campo rotulo="Tipo" nome="tipo"><select id="tipo" name="tipo" className="campo"><option value="CANCELAMENTO">Cancelamento</option><option value="RECUPERACAO">Recuperação</option></select></Campo>
-                  <Campo rotulo="Titular (exceção)" nome="titularVendedorId-e"><select id="titularVendedorId-e" name="titularVendedorId" defaultValue="" className="campo"><option value="">Regra padrão</option>{d.vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome} · {v.tipoDocumento}</option>)}</select></Campo>
+                  <Campo rotulo="Categoria" nome="participante"><select id="participante" name="participante" defaultValue="" className="campo"><option value="">Padrão (demais)</option>{d.categorias.map((c) => <option key={c.id} value={c.codigo}>{c.nome}</option>)}<option value="SUPERVISAO">Supervisão</option><option value="GERENCIA">Gerência</option></select></Campo>
+                  <Campo rotulo="Vendedor (exceção)" nome="titularVendedorId-e"><select id="titularVendedorId-e" name="titularVendedorId" defaultValue="" className="campo"><option value="">—</option>{d.vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome} · {v.tipoDocumento}</option>)}</select></Campo>
                   <Campo rotulo="Percentual (%)" nome="percentual"><input id="percentual" name="percentual" inputMode="decimal" className="campo numero" required /></Campo>
                   <Campo rotulo="Vigente desde" nome="vigenteDe-e"><input id="vigenteDe-e" name="vigenteDe" type="date" defaultValue={hojeISO} className="campo" /></Campo>
                 </div>

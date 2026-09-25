@@ -705,6 +705,8 @@ model ConfiguracaoEstorno {
 model RegraEstorno {
   id                String      @id @default(cuid())
   tipo              TipoEstorno
+  /// Código da categoria do vendedor ou SUPERVISAO/GERENCIA. Nulo = vale para todos os participantes.
+  participante      String?
   titularVendedorId String?
   percentual        Decimal     @db.Decimal(9, 4)
   vigenteDe         DateTime    @db.Date

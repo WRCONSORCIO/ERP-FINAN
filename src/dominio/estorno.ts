@@ -26,6 +26,8 @@ export interface RegraEstornoResolvida {
   id: string;
   percentual: Dec;
   excecao: boolean;
+  /** Participante da regra (categoria, SUPERVISAO ou GERENCIA); null = regra padrão. */
+  participante?: string | null;
   vigenteDe: Date;
   vigenteAte: Date | null;
 }
@@ -151,7 +153,7 @@ export function calcularEstornos(e: EntradaEstorno): { linhas: LinhaEstorno[]; p
         comissaoBase: paraTexto(comissaoBase),
         percentual: paraTexto(d.regra.percentual),
         valor: paraTexto(valor),
-        regra: { regraId: d.regra.id, excecaoIndividual: d.regra.excecao, vigenteDe: paraISO(d.regra.vigenteDe), vigenteAte: d.regra.vigenteAte ? paraISO(d.regra.vigenteAte) : null },
+        regra: { regraId: d.regra.id, excecaoIndividual: d.regra.excecao, participante: d.regra.participante ?? 'padrão', vigenteDe: paraISO(d.regra.vigenteDe), vigenteAte: d.regra.vigenteAte ? paraISO(d.regra.vigenteAte) : null },
         configuracao: { id: e.config.id, participantes: [...e.config.participantes], vigenteDe: paraISO(e.config.vigenteDe), vigenteAte: e.config.vigenteAte ? paraISO(e.config.vigenteAte) : null },
         dataDoFato: { percentual: 'dataCancelamento', dataCancelamento: paraISO(e.cota.dataCancelamento), origemDaData: e.cota.origemDataCancelamento, base: 'comissão apurada com a tabela da data da venda' },
         titular: d.titular ? { pessoaId: d.titular.pessoaId, vendedorId: d.titular.vendedorId, nome: d.titular.nome } : 'SEM TITULAR',

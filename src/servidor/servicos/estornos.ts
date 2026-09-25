@@ -36,7 +36,7 @@ export async function movimentarEstorno(s: Sessao, d: z.infer<typeof esquemaMovi
     const e = await tx.estorno.findFirst({ where: { id: d.estornoId, ...escopoEstornos(s) } });
     if (!e) throw new ErroNaoEncontrado();
     if (!TRANSICOES[e.status].includes(d.para)) throw new ErroDeDominio(`Um estorno ${e.status.replace('_', ' ').toLowerCase()} não pode ir para ${d.para.replace('_', ' ').toLowerCase()}.`);
-    if (e.titularPessoaId === null && d.para !== 'PERDOADO') throw new ErroDeDominio('Estorno sem titular: cadastre o responsável e reapure antes de cobrar.');
+    if (e.titularPessoaId === null && d.para !== 'PERDOADO') throw new ErroDeDominio('Este estorno não tem de quem cobrar: informe em Estrutura quem era o responsável na data da venda e clique em “Processar pendências agora” em Importações.');
     const depois = await tx.estorno.update({ where: { id: e.id }, data: { status: d.para } });
     await tx.estornoMovimento.create({
       data: { estornoId: e.id, de: e.status, para: d.para, valor: d.valor ?? null, forma: d.forma ?? null, referencia: d.referencia, motivo: d.motivo, usuarioId: s.usuarioId },

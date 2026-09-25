@@ -102,22 +102,20 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
         {d.historico.length === 0 ? <EstadoVazio titulo="Nenhum arquivo enviado ainda" /> : (
           <div className="tabela-quadro">
             <table className="tabela">
-              <thead><tr><th>Arquivo</th><th>Tipo</th><th>Enviado</th><th className="direita">Linhas</th><th className="direita">Novos</th><th className="direita">Atualizados</th><th className="direita">Sem mudança</th><th className="direita">Não lidas</th><th className="direita">Vendedor trocado</th><th>Total</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Arquivo</th><th>Tipo</th><th>Enviado</th><th className="direita">Linhas</th><th className="direita">Novos</th><th className="direita">Atualizados</th><th className="direita">Não lidas</th><th>Total confere?</th><th>Situação</th></tr></thead>
               <tbody>
                 {d.historico.map((i) => {
                   const dif = i.diferencaConferencia;
                   return (
                     <tr key={i.id} className={d.selecionada?.id === i.id ? 'bg-wr-verde-claro/50' : ''}>
                       <td className="max-w-[240px] truncate"><Link href={`/importacoes?importacao=${i.id}#erros`} title={`sha256 ${i.hashArquivo}`}>{i.nomeArquivo}</Link>{i.mensagem ? <span className="block text-[11px] text-wr-texto-3">{i.mensagem}</span> : null}</td>
-                      <td>{ROTULO_TIPO_ARQUIVO[i.tipo]}</td>
+                      <td className="whitespace-nowrap">{ROTULO_TIPO_ARQUIVO[i.tipo]}</td>
                       <td className="numero">{formatarDataHora(i.enviadoEm)}</td>
                       <td className="direita numero">{i.totalLinhas}</td>
                       <td className="direita numero">{i.novos}</td>
                       <td className="direita numero">{i.atualizados}</td>
-                      <td className="direita numero">{i.repetidos}</td>
                       <td className="direita numero">{i.erros > 0 ? <Etiqueta tom="vermelho">{i.erros}</Etiqueta> : 0}</td>
-                      <td className="direita numero">{i.divergencias > 0 ? <Etiqueta tom="ambar">{i.divergencias}</Etiqueta> : 0}</td>
-                      <td>{dif === null ? <span className="text-[12px] text-wr-texto-3">sem total no arquivo</span> : dif.isZero() ? <Etiqueta tom="verde">confere</Etiqueta> : <Etiqueta tom="vermelho" titulo={`arquivo ${formatarMoeda(i.totalArquivo)} × reconhecido ${formatarMoeda(i.totalReconhecido)}`}>diferença {formatarMoeda(dif)}</Etiqueta>}</td>
+                      <td>{dif === null ? <span className="text-[12px] text-wr-texto-3" title="O arquivo não tem total no rodapé">—</span> : dif.isZero() ? <Etiqueta tom="verde">confere</Etiqueta> : <Etiqueta tom="vermelho" titulo={`arquivo ${formatarMoeda(i.totalArquivo)} × reconhecido ${formatarMoeda(i.totalReconhecido)}`}>diferença {formatarMoeda(dif)}</Etiqueta>}</td>
                       <td>{i.status === 'APLICADA' ? <Etiqueta tom="verde">processado</Etiqueta> : i.status === 'FALHOU' ? <Etiqueta tom="vermelho">falhou</Etiqueta> : <Etiqueta tom="ambar">{i.status === 'APLICANDO' ? 'processando' : 'falta processar'}</Etiqueta>}</td>
                     </tr>
                   );

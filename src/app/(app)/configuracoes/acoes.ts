@@ -19,11 +19,29 @@ export async function ativoCategoriaAcao(_: Estado, fd: FormData) {
 export async function excluirCategoriaAcao(_: Estado, fd: FormData) {
   return executar('regras', 'editar', z.object({ id: z.string().min(1) }), formParaObjeto(fd), async (s, d) => { await R.excluirCategoria(s, d); return { mensagem: 'Categoria excluída.' }; });
 }
+/**
+ * Na tela, "quem recebe" é um campo só (V:<categoria>, SUPERVISAO ou GERENCIA) e a exceção
+ * individual outro (v:<vendedor> ou p:<pessoa>); aqui viram os campos da regra.
+ */
+function comQuemRecebe(fd: FormData): Record<string, unknown> {
+  const o = formParaObjeto(fd);
+  const quem = typeof o.quem === 'string' ? o.quem : '';
+  const so = typeof o.soPara === 'string' ? o.soPara : '';
+  delete o.quem;
+  delete o.soPara;
+  if (quem) {
+    if (quem.startsWith('V:')) { o.destino = 'VENDEDOR'; o.categoriaId = quem.slice(2); } else o.destino = quem;
+  }
+  if (so.startsWith('v:')) o.titularVendedorId = so.slice(2);
+  if (so.startsWith('p:')) o.titularPessoaId = so.slice(2);
+  return o;
+}
+
 export async function abrirTabelaAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaTabela, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaTabela(s, d); return { mensagem: 'Nova vigência aberta. A anterior foi encerrada no dia anterior; vendas já apuradas não mudam.' }; });
+  return executar('regras', 'editar', R.esquemaTabela, comQuemRecebe(fd), async (s, d) => { await R.abrirVigenciaTabela(s, d); return { mensagem: 'Percentuais salvos.' }; });
 }
 export async function simularTabelaAcao(_: Resultado<R.ResultadoSimulacao> | null, fd: FormData): Promise<Resultado<R.ResultadoSimulacao>> {
-  return executar('regras', 'editar', R.esquemaTabela, formParaObjeto(fd), async (s, d) => ({ mensagem: 'Simulação pronta.', dados: await R.simularTabela(s, d) }));
+  return executar('regras', 'editar', R.esquemaTabela, comQuemRecebe(fd), async (s, d) => ({ mensagem: 'Simulação pronta.', dados: await R.simularTabela(s, d) }));
 }
 export async function abrirConfigEstornoAcao(_: Estado, fd: FormData) {
   return executar('regras', 'editar', R.esquemaConfigEstorno, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaConfigEstorno(s, d); return { mensagem: 'Regras de estorno salvas.' }; });
@@ -48,19 +66,19 @@ export async function simularRegraEstornoAcao(_: Resultado<R.ResultadoSimulacao>
   return executar('regras', 'editar', R.esquemaRegraEstorno, comParaQuem(fd), async (s, d) => ({ mensagem: 'Simulação pronta.', dados: await R.simularRegraEstorno(s, d) }));
 }
 export async function abrirMetaAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaMeta, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaMeta(s, d); return { mensagem: 'Nova meta vigente. Quem já foi promovido não é reclassificado.' }; });
+  return executar('regras', 'editar', R.esquemaMeta, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaMeta(s, d); return { mensagem: 'Meta salva.' }; });
 }
 export async function abrirFlexAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaFlex, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaFlex(s, d); return { mensagem: 'Modalidade flex vigente.' }; });
+  return executar('regras', 'editar', R.esquemaFlex, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaFlex(s, d); return { mensagem: 'Plano flex salvo.' }; });
 }
 export async function aliasesFlexAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaAliases, formParaObjeto(fd), async (s, d) => { await R.editarAliasesFlex(s, d); return { mensagem: 'Apelidos salvos (valem para vendas futuras).' }; });
+  return executar('regras', 'editar', R.esquemaAliases, formParaObjeto(fd), async (s, d) => { await R.editarAliasesFlex(s, d); return { mensagem: 'Nomes salvos. Valem para os próximos arquivos.' }; });
 }
 export async function criarSegmentoAcao(_: Estado, fd: FormData) {
   return executar('regras', 'editar', R.esquemaSegmento, formParaObjeto(fd), async (s, d) => { await R.criarSegmento(s, d); return { mensagem: 'Segmento criado.' }; });
 }
 export async function aliasesSegmentoAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaAliases, formParaObjeto(fd), async (s, d) => { await R.editarAliasesSegmento(s, d); return { mensagem: 'Apelidos salvos (valem para vendas futuras).' }; });
+  return executar('regras', 'editar', R.esquemaAliases, formParaObjeto(fd), async (s, d) => { await R.editarAliasesSegmento(s, d); return { mensagem: 'Nomes salvos. Valem para os próximos arquivos.' }; });
 }
 
 // ------------------------------------------------------------------ Correção e exclusão de vigência sem uso

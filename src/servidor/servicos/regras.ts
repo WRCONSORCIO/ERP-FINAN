@@ -156,9 +156,9 @@ function faixasDaEntrada(d: EntradaTabela): Array<{ parcela: number; percentual:
 }
 
 function validarChaveTabela(d: EntradaTabela) {
-  if (d.destino === 'VENDEDOR' && !d.categoriaId) throw new ErroDeDominio('Tabela de vendedor precisa de categoria.');
-  if (d.destino !== 'VENDEDOR' && (d.categoriaId || d.titularVendedorId)) throw new ErroDeDominio('Supervisão e gerência não usam categoria nem documento — a exceção, se houver, é da pessoa.');
-  if (d.destino === 'VENDEDOR' && d.titularPessoaId) throw new ErroDeDominio('Exceção de vendedor é por documento, não por pessoa.');
+  if (d.destino === 'VENDEDOR' && !d.categoriaId) throw new ErroDeDominio('Escolha a categoria do vendedor em “Quem recebe”.');
+  if (d.destino !== 'VENDEDOR' && (d.categoriaId || d.titularVendedorId)) throw new ErroDeDominio('Para supervisor ou gerente, a exceção precisa ser um supervisor/gerente, não um vendedor.');
+  if (d.destino === 'VENDEDOR' && d.titularPessoaId) throw new ErroDeDominio('Para vendedor, a exceção precisa ser um vendedor (CPF/CNPJ), não um supervisor/gerente.');
 }
 
 function chaveTabelaWhere(d: EntradaTabela): Prisma.TabelaComissaoWhereInput {
@@ -250,7 +250,7 @@ export async function simularTabela(s: Sessao, d: EntradaTabela): Promise<Result
   return {
     cotasAvaliadas: cotas.length, totalAtual: paraTexto(totalAtual), totalNovo: paraTexto(totalNovo), diferenca: paraTexto(totalNovo.minus(totalAtual)),
     amostraDesde: formatarData(desde), exemplos,
-    aviso: 'Simulação: nada foi gravado. A nova vigência vale só para vendas a partir da data informada; vendas já registradas continuam com a regra da data delas.',
+    aviso: 'Simulação: nada foi gravado. A regra nova vale só para vendas a partir da data informada; vendas já registradas continuam com a regra da data delas.',
   };
 }
 
@@ -327,7 +327,7 @@ export async function definirEscopoBase(s: Sessao, d: z.infer<typeof esquemaDefi
   return prisma.$transaction(async (tx) => {
     const c = await tx.configuracaoEstorno.findUnique({ where: { id: d.configuracaoId } });
     if (!c) throw new ErroNaoEncontrado();
-    if (c.escopoBase !== null) throw new ErroDeDominio('O escopo desta vigência já está definido. Para mudar, abra uma vigência nova.');
+    if (c.escopoBase !== null) throw new ErroDeDominio('Esta regra já está completa. Para mudar, salve uma regra nova com a data da mudança.');
     const depois = await tx.configuracaoEstorno.update({ where: { id: c.id }, data: { escopoBase: d.escopoBase } });
     await auditar(tx, { sessao: s, acao: 'ALTERACAO_REGRA', entidade: 'ConfiguracaoEstorno', entidadeId: c.id, antes: c, depois, contexto: { operacao: 'definição de escopo indefinido' } });
     await reapurarCanceladasComPendencia(tx, 'escopo da base do estorno definido');

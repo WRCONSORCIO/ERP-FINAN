@@ -34,8 +34,8 @@ async function contarAdminsAtivos(tx: Tx) {
 export async function criarUsuario(s: Sessao, d: z.infer<typeof esquemaUsuario>) {
   exigir(s, 'usuarios', 'tudo');
   const escopo = escopoCoerente(d);
-  if (d.perfil === 'GERENTE' && !escopo.gerenciaId) throw new ErroDeDominio('Gerente precisa de uma gerência — sem unidade, não enxerga nada.');
-  if (d.perfil === 'SUPERVISOR' && !escopo.equipeId) throw new ErroDeDominio('Supervisor precisa de uma equipe — sem unidade, não enxerga nada.');
+  if (d.perfil === 'GERENTE' && !escopo.gerenciaId) throw new ErroDeDominio('Escolha a gerência deste gerente — sem ela, ele não vê nada.');
+  if (d.perfil === 'SUPERVISOR' && !escopo.equipeId) throw new ErroDeDominio('Escolha a equipe deste supervisor — sem ela, ele não vê nada.');
   const senha = gerarSenhaProvisoria();
   const senhaHash = await gerarHash(senha);
   return prisma.$transaction(async (tx) => {

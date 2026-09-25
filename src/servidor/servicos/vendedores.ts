@@ -172,12 +172,12 @@ export async function corrigirInicioCategoria(s: Sessao, d: z.infer<typeof esque
       where: { vendedorId: vig.vendedorId, vigenteDe: { lt: vig.vigenteDe } }, orderBy: { vigenteDe: 'desc' }, include: { categoria: true },
     });
     if (anterior && d.novoInicio <= anterior.vigenteDe) {
-      throw new ErroDeDominio(`A nova data atropelaria o período anterior (${anterior.categoria.nome} desde ${formatarData(anterior.vigenteDe)}).`);
+      throw new ErroDeDominio(`A nova data passaria por cima do período anterior (${anterior.categoria.nome} desde ${formatarData(anterior.vigenteDe)}).`);
     }
     if (d.novoInicio > vig.vigenteDe) {
       // Atrasar o início descobre [início antigo, novo início): vendas apuradas nesse intervalo perderiam a regra.
       const c = await vendasApuradasDesde(tx, { vendedorId: vig.vendedorId, campo: 'snapCategoriaId', valor: vig.categoriaId, desde: vig.vigenteDe, ate: diaAnterior(d.novoInicio) });
-      if (c) throw new ErroDeDominio(`Tiraria a regra da venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)}, já apurada como ${vig.categoria.nome}.`);
+      if (c) throw new ErroDeDominio(`Tiraria a regra da venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)}, já calculada como ${vig.categoria.nome}.`);
       await tx.vendedorCategoria.update({ where: { id: vig.id }, data: { vigenteDe: d.novoInicio } });
       if (anterior && anterior.vigenteAte && anterior.vigenteAte.getTime() === diaAnterior(vig.vigenteDe).getTime()) {
         await tx.vendedorCategoria.update({ where: { id: anterior.id }, data: { vigenteAte: diaAnterior(d.novoInicio) } });
@@ -186,7 +186,7 @@ export async function corrigirInicioCategoria(s: Sessao, d: z.infer<typeof esque
       // Antecipar o início encurta o anterior: vendas apuradas pelo anterior no intervalo perderiam a regra.
       if (anterior) {
         const c = await vendasApuradasDesde(tx, { vendedorId: vig.vendedorId, campo: 'snapCategoriaId', valor: anterior.categoriaId, desde: d.novoInicio, ate: diaAnterior(vig.vigenteDe) });
-        if (c) throw new ErroDeDominio(`Tiraria a regra da venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)}, já apurada como ${anterior.categoria.nome}.`);
+        if (c) throw new ErroDeDominio(`Tiraria a regra da venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)}, já calculada como ${anterior.categoria.nome}.`);
         await tx.vendedorCategoria.update({ where: { id: anterior.id }, data: { vigenteAte: diaAnterior(d.novoInicio) } });
       }
       await tx.vendedorCategoria.update({ where: { id: vig.id }, data: { vigenteDe: d.novoInicio } });

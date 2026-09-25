@@ -165,7 +165,7 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     expect(await prisma.auditLog.count({ where: { acao: 'PROMOCAO' } })).toBe(1);
     // Corrigir data: não pode atropelar o anterior nem tirar a regra da venda apurada
     const nova = await prisma.vendedorCategoria.findFirstOrThrow({ where: { vendedorId: v.id, categoriaId: cat.EXPERT } });
-    await expect(corrigirInicioCategoria(admin, { vigenciaId: nova.id, novoInicio: D('2026-01-01'), motivo: 'erro' })).rejects.toThrow(/atropelaria/);
+    await expect(corrigirInicioCategoria(admin, { vigenciaId: nova.id, novoInicio: D('2026-01-01'), motivo: 'erro' })).rejects.toThrow(/passaria por cima/);
     await expect(corrigirInicioCategoria(admin, { vigenciaId: nova.id, novoInicio: D('2026-09-05'), motivo: 'erro' })).rejects.toThrow(/Tiraria a regra/);
     await corrigirInicioCategoria(admin, { vigenciaId: nova.id, novoInicio: D('2026-09-20'), motivo: 'data correta' });
     const anterior = await prisma.vendedorCategoria.findFirstOrThrow({ where: { vendedorId: v.id, categoriaId: cat.VETERANO } });

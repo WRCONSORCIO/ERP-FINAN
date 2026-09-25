@@ -60,7 +60,7 @@ export function FormularioComSimulacao({ salvar, simular, children, confirmacao 
         {resSim && !resSim.ok ? <p className="rounded-lg bg-wr-vermelho-claro px-3 py-2 text-[12px] text-wr-vermelho">{resSim.mensagem}</p> : null}
         {sim ? (
           <div className="rounded-lg border border-wr-azul/25 bg-wr-azul-claro p-3 text-[12px]">
-            <p className="font-semibold text-wr-azul">Simulação · {sim.cotasAvaliadas} registro(s) desde {sim.amostraDesde}</p>
+            <p className="font-semibold text-wr-azul">Simulação com {sim.cotasAvaliadas} venda(s) desde {sim.amostraDesde}</p>
             <div className="mt-1 grid gap-2 sm:grid-cols-3">
               <p>Regra atual: <span className="numero font-semibold">{formatarMoeda(sim.totalAtual)}</span></p>
               <p>Nova regra: <span className="numero font-semibold">{formatarMoeda(sim.totalNovo)}</span></p>

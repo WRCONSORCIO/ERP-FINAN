@@ -86,7 +86,7 @@ export async function processarFila(limite = 100, agora = new Date()): Promise<R
       if (esgotou) {
         await notificar(prisma, {
           tipo: 'FALHA_PROCESSAMENTO', severidade: 'CRITICA', titulo: 'Apuração falhou após várias tentativas',
-          mensagem: `A apuração de uma cota falhou ${tentativa} vezes: ${msg.slice(0, 200)}`,
+          mensagem: `O cálculo de uma venda falhou ${tentativa} vezes: ${msg.slice(0, 200)}`,
           link: ev.cotaId ? `/clientes/${ev.cotaId}` : '/importacoes', chave: `fila-erro-${ev.id}`, perfis: ['ADMINISTRADOR', 'FINANCEIRO'],
         });
       }

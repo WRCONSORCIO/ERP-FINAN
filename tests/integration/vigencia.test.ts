@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { abrirVigenciaRegraEstorno, abrirVigenciaTabela, definirEscopoBase, simularTabela } from '@/servidor/servicos/regras';
 import { alterarCategoria, corrigirInicioCategoria } from '@/servidor/servicos/vendedores';
+import { corrigirRegraEstorno, excluirVigencia } from '@/servidor/servicos/vigencias';
 import { comissoesDa, csv, D, estrutura, importar, preparar, vendedor } from './ajuda';
 
 describe('vigência: a regra é resolvida pela data do fato', () => {
@@ -94,6 +95,34 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     expect((await estornoDa('1')).percentual.toFixed(2)).toBe('50.00');
     // Sobreposição do mesmo tipo e categoria é barrada pelo banco
     await expect(prisma.regraEstorno.create({ data: { tipo: 'CANCELAMENTO', participante: 'EXPERT', percentual: '1', vigenteDe: D('2026-09-25') } })).rejects.toThrow();
+  });
+
+  it('vigência sem uso pode ser corrigida (inclusive para trás) ou excluída; usada, não', async () => {
+    const { admin, administradoraId, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    await vendedor(admin, { nome: 'Carla ME', tipo: 'CNPJ', doc: '11222333000181', categoriaId: cat.VETERANO, equipeId: est.equipeId });
+    const padrao = await prisma.regraEstorno.findFirstOrThrow({ where: { tipo: 'CANCELAMENTO', participante: null, titularVendedorId: null } });
+    // Nova vigência 30% a partir de 15/09 e depois excluída: a de 50% volta a ficar aberta
+    const nova = await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: null, titularVendedorId: null, percentual: '30', vigenteDe: D('2026-09-15') });
+    expect((await prisma.regraEstorno.findUniqueOrThrow({ where: { id: padrao.id } })).vigenteAte).not.toBeNull();
+    await excluirVigencia(admin, { entidade: 'REGRA_ESTORNO', id: nova.id, motivo: 'lançada errada' });
+    expect((await prisma.regraEstorno.findUniqueOrThrow({ where: { id: padrao.id } })).vigenteAte).toBeNull();
+    expect(await prisma.auditLog.count({ where: { entidade: 'RegraEstorno', entidadeId: nova.id, acao: 'EXCLUSAO' } })).toBe(1);
+
+    // Corrigir para trás (a alteração real era anterior à carga) e com outro percentual
+    await corrigirRegraEstorno(admin, { id: padrao.id, percentual: '40', vigenteDe: D('2025-06-01'), vigenteAte: null, motivo: 'regra vigente desde junho/2025' });
+
+    const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
+    await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
+    await importar(admin, administradoraId, csv([
+      { grupo: '5', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
+    ]));
+    const e = await prisma.estorno.findFirstOrThrow({ where: { destino: 'VENDEDOR' } });
+    expect(e.percentual.toFixed(2)).toBe('40.00');
+    // Agora usada: não corrige nem exclui
+    await expect(corrigirRegraEstorno(admin, { id: padrao.id, percentual: '45', vigenteDe: D('2025-06-01'), vigenteAte: null, motivo: 'tentativa' })).rejects.toThrow(/já foi usada/);
+    await expect(excluirVigencia(admin, { entidade: 'REGRA_ESTORNO', id: padrao.id, motivo: 'tentativa' })).rejects.toThrow(/já foi usada/);
+    await expect(excluirVigencia(admin, { entidade: 'CONFIG_ESTORNO', id: cfg.id, motivo: 'tentativa' })).rejects.toThrow(/já foi usada/);
   });
 
   it('categoria do documento: nova vigência, snapshot antigo intocado e trava contra reescrever venda apurada', async () => {

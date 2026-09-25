@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { exigir, type Sessao } from '../contexto';
 import { usoDaCategoria } from '../servicos/regras';
+import { usoDoSegmento, usosDasVigencias } from '../servicos/vigencias';
 
 export async function dadosDeConfiguracao(s: Sessao) {
   exigir(s, 'regras');
@@ -16,6 +17,8 @@ export async function dadosDeConfiguracao(s: Sessao) {
     prisma.pessoa.findMany({ where: { responsabilidades: { some: {} } }, select: { id: true, nome: true }, orderBy: { nome: 'asc' } }),
   ]);
   const usos = new Map(await Promise.all(categorias.map(async (c) => [c.id, await usoDaCategoria(prisma, c.id)] as const)));
+  const usosVigencia = await usosDasVigencias();
+  const usosSegmento = new Map(await Promise.all(segmentos.map(async (g) => [g.id, await usoDoSegmento(prisma, g.id)] as const)));
   const pessoasTitulares = await prisma.pessoa.findMany({ where: { id: { in: tabelas.map((t) => t.titularPessoaId).filter((x): x is string => x !== null) } }, select: { id: true, nome: true } });
-  return { categorias, usos, segmentos, tabelas, configs, regras, metas, flex, vendedores, pessoas, pessoasTitulares };
+  return { categorias, usos, usosVigencia, usosSegmento, segmentos, tabelas, configs, regras, metas, flex, vendedores, pessoas, pessoasTitulares };
 }

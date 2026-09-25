@@ -14,8 +14,10 @@ import { FormularioAcao } from '@/ui/formulario-acao';
 import { FormularioComSimulacao } from '@/ui/formulario-simulacao';
 import {
   abrirConfigEstornoAcao, abrirFlexAcao, abrirMetaAcao, abrirRegraEstornoAcao, abrirTabelaAcao, aliasesFlexAcao, aliasesSegmentoAcao, ativoCategoriaAcao,
-  criarCategoriaAcao, criarSegmentoAcao, definirEscopoAcao, editarCategoriaAcao, excluirCategoriaAcao, simularRegraEstornoAcao, simularTabelaAcao,
+  corrigirConfigEstornoAcao, corrigirFlexAcao, corrigirMetaAcao, corrigirRegraEstornoAcao, corrigirTabelaAcao, criarCategoriaAcao, criarSegmentoAcao,
+  definirEscopoAcao, editarCategoriaAcao, editarSegmentoAcao, excluirCategoriaAcao, excluirSegmentoAcao, excluirVigenciaAcao, simularRegraEstornoAcao, simularTabelaAcao,
 } from './acoes';
+import type { EntidadeVigencia } from '@/servidor/servicos/vigencias';
 
 export const metadata: Metadata = { title: 'Configurações' };
 export const dynamic = 'force-dynamic';
@@ -31,6 +33,41 @@ const ABAS = [
 function Vig({ de, ate }: { de: Date; ate: Date | null }) {
   const d = hoje();
   return <span className="whitespace-nowrap"><DataCurta valor={de} /> → {ate ? <DataCurta valor={ate} /> : 'aberta'} {vigenteEm(d, de, ate) ? <Etiqueta tom="verde">vigente</Etiqueta> : de > d ? <Etiqueta tom="ambar">futura</Etiqueta> : <Etiqueta>encerrada</Etiqueta>}</span>;
+}
+
+const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : '');
+type AcaoForm = React.ComponentProps<typeof FormularioAcao>['acao'];
+
+/**
+ * Corrigir ou excluir uma vigência. Só enquanto nenhum cálculo a usou: aí corrigir não reescreve o passado.
+ * Usada, ela fica imutável e a mudança é uma vigência nova.
+ */
+function AcoesVigencia({ entidade, id, uso, de, ate, corrigir, children }: {
+  entidade: EntidadeVigencia; id: string; uso: number; de: Date; ate: Date | null; corrigir: AcaoForm; children?: React.ReactNode;
+}) {
+  if (uso > 0) return <span className="text-[12px] text-wr-texto-3" title="Já explica cálculos gravados. Para mudar daqui para frente, abra uma vigência nova.">em uso ({uso})</span>;
+  return (
+    <details className="min-w-[110px]">
+      <summary className="cursor-pointer text-[12px] font-semibold text-wr-verde">Corrigir / excluir</summary>
+      <div className="mt-2 min-w-[300px] space-y-3 rounded border border-wr-borda bg-wr-fundo p-3">
+        <FormularioAcao acao={corrigir} rotulo="Salvar correção" confirmacao="Nenhum cálculo usou esta vigência ainda, então a correção não altera nada já apurado. Fica registrada na auditoria.">
+          <input type="hidden" name="id" value={id} />
+          {children}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Campo rotulo="Vigente desde" nome={`de-${id}`}><input id={`de-${id}`} name="vigenteDe" type="date" defaultValue={iso(de)} className="campo" required /></Campo>
+            <Campo rotulo="Vigente até (vazio = aberta)" nome={`ate-${id}`}><input id={`ate-${id}`} name="vigenteAte" type="date" defaultValue={iso(ate)} className="campo" /></Campo>
+          </div>
+          <Campo rotulo="Motivo" nome={`motivo-${id}`}><input id={`motivo-${id}`} name="motivo" className="campo" required minLength={3} /></Campo>
+        </FormularioAcao>
+        <div className="border-t border-wr-borda pt-3">
+          <FormularioAcao acao={excluirVigenciaAcao} rotulo="Excluir vigência" perigo emLinha confirmacao="Exclui esta vigência. Se ela encerrou uma vigência anterior da mesma regra, a anterior volta a valer pelo período. Fica registrado na auditoria.">
+            <input type="hidden" name="entidade" value={entidade} /><input type="hidden" name="id" value={id} />
+            <input name="motivo" aria-label="Motivo da exclusão" placeholder="Motivo da exclusão" className="campo w-56" required minLength={3} />
+          </FormularioAcao>
+        </div>
+      </div>
+    </details>
+  );
 }
 
 function CamposCategoria({ c }: { c?: { nome: string; descricao: string | null; ordem: number; documentosAceitos: string[]; pagaPelaWr: boolean; geraSupervisao: boolean; geraGerencia: boolean; contaParaPromocao: boolean } }) {
@@ -66,7 +103,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
     codigo === 'SUPERVISAO' ? 'Supervisão' : codigo === 'GERENCIA' ? 'Gerência' : (d.categorias.find((c) => c.codigo === codigo)?.nome ?? codigo);
 
   return (
-    <Pagina titulo="Configurações" descricao="Percentuais, metas, critérios de estorno e categorias são cadastro com vigência. Toda alteração abre vigência nova e não reescreve o passado: a regra é resolvida pela data do fato.">
+    <Pagina titulo="Configurações" descricao="Percentuais, metas, critérios de estorno e categorias são cadastro com vigência. A regra é resolvida pela data do fato. Vigência que ainda não foi usada em nenhum cálculo pode ser corrigida (inclusive a data) ou excluída; depois de usada, a mudança é uma vigência nova.">
       <nav className="flex flex-wrap gap-1 border-b border-wr-borda" aria-label="Abas de configuração">
         {ABAS.map((a) => (
           <Link key={a.id} href={`/configuracoes?aba=${a.id}`} aria-current={aba === a.id ? 'page' : undefined}
@@ -141,7 +178,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
             {d.tabelas.length === 0 ? <EstadoVazio titulo="Nenhuma tabela cadastrada" /> : (
               <div className="tabela-quadro">
                 <table className="tabela">
-                  <thead><tr><th>Destino</th><th>Segmento</th><th>Exceção</th>{[1, 2, 3, 4, 5, 6].map((n) => <th key={n} className="direita">{n}ª</th>)}<th className="direita">Total</th><th>Vigência</th></tr></thead>
+                  <thead><tr><th>Destino</th><th>Segmento</th><th>Exceção</th>{[1, 2, 3, 4, 5, 6].map((n) => <th key={n} className="direita">{n}ª</th>)}<th className="direita">Total</th><th>Vigência</th>{editar ? <th>Ações</th> : null}</tr></thead>
                   <tbody>
                     {d.tabelas.map((t) => (
                       <tr key={t.id} className={t.vigenteAte && t.vigenteAte < hoje() ? 'opacity-60' : ''}>
@@ -151,6 +188,21 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                         {[1, 2, 3, 4, 5, 6].map((n) => { const f = t.faixas.find((x) => x.parcela === n); return <td key={n} className="direita">{f ? <Percentual valor={f.percentual} /> : <Traco />}</td>; })}
                         <td className="direita font-semibold"><Percentual valor={somar(t.faixas.map((f) => dec(f.percentual)))} /></td>
                         <td><Vig de={t.vigenteDe} ate={t.vigenteAte} /></td>
+                        {editar ? (
+                          <td>
+                            <AcoesVigencia entidade="TABELA" id={t.id} uso={d.usosVigencia.get(t.id) ?? 0} de={t.vigenteDe} ate={t.vigenteAte} corrigir={corrigirTabelaAcao}>
+                              <fieldset>
+                                <legend className="rotulo mb-1">Percentual por parcela (%, vazio = não paga)</legend>
+                                <div className="grid grid-cols-4 gap-1">
+                                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                                    <label key={n} className="text-[11px] text-wr-texto-3">{n}ª<input name={`p${n}`} inputMode="decimal" placeholder="—" defaultValue={t.faixas.find((f) => f.parcela === n)?.percentual.toString() ?? ''} className="campo numero mt-0.5" /></label>
+                                  ))}
+                                </div>
+                              </fieldset>
+                              <Campo rotulo="Observação" nome={`obs-${t.id}`}><input id={`obs-${t.id}`} name="observacao" defaultValue={t.observacao ?? ''} className="campo" /></Campo>
+                            </AcoesVigencia>
+                          </td>
+                        ) : null}
                       </tr>
                     ))}
                   </tbody>
@@ -206,7 +258,37 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                 ))}
               </div>
             ) : null}
-            {d.configs.length > 1 ? <ul className="mt-3 text-[12px] text-wr-texto-2">{d.configs.map((c) => <li key={c.id}><Vig de={c.vigenteDe} ate={c.vigenteAte} /> · {c.participantes.join(', ')} · {c.criterioCancelamento} {c.limiteParcelas} · {c.escopoBase ? ROTULO_ESCOPO[c.escopoBase as EscopoBase] : 'escopo indefinido'}</li>)}</ul> : null}
+            {d.configs.length > 0 ? (
+              <div className="tabela-quadro mt-4">
+                <table className="tabela">
+                  <thead><tr><th>Vigência</th><th>Participantes</th><th>Critério</th><th>Escopo da base</th>{editar ? <th>Ações</th> : null}</tr></thead>
+                  <tbody>{d.configs.map((c) => (
+                    <tr key={c.id}>
+                      <td><Vig de={c.vigenteDe} ate={c.vigenteAte} /></td>
+                      <td>{c.participantes.map(nomeParticipante).join(', ')}</td>
+                      <td>{c.limiteParcelas === 0 ? 'desligado' : `${c.criterioCancelamento === 'IGUAL' ? 'igual a' : 'abaixo de'} ${c.limiteParcelas}`}</td>
+                      <td>{c.escopoBase ? ROTULO_ESCOPO[c.escopoBase as EscopoBase] : <Etiqueta tom="ambar">não definido</Etiqueta>}</td>
+                      {editar ? (
+                        <td>
+                          <AcoesVigencia entidade="CONFIG_ESTORNO" id={c.id} uso={d.usosVigencia.get(c.id) ?? 0} de={c.vigenteDe} ate={c.vigenteAte} corrigir={corrigirConfigEstornoAcao}>
+                            <fieldset className="text-[13px]"><legend className="rotulo mb-1">Participantes</legend>
+                              {d.categorias.map((cat) => <label key={cat.id} className="mr-3 inline-block"><input type="checkbox" name="participantes" value={cat.codigo} defaultChecked={c.participantes.includes(cat.codigo)} /> {cat.nome}</label>)}
+                              <label className="mr-3 inline-block"><input type="checkbox" name="participantes" value="SUPERVISAO" defaultChecked={c.participantes.includes('SUPERVISAO')} /> Supervisão</label>
+                              <label className="inline-block"><input type="checkbox" name="participantes" value="GERENCIA" defaultChecked={c.participantes.includes('GERENCIA')} /> Gerência</label>
+                            </fieldset>
+                            <div className="grid gap-2 sm:grid-cols-3">
+                              <Campo rotulo="Critério" nome={`crit-${c.id}`}><select id={`crit-${c.id}`} name="criterioCancelamento" defaultValue={c.criterioCancelamento} className="campo"><option value="IGUAL">igual a</option><option value="ABAIXO_DE">abaixo de</option></select></Campo>
+                              <Campo rotulo="Parcelas pagas" nome={`lim-${c.id}`}><input id={`lim-${c.id}`} name="limiteParcelas" type="number" min={0} defaultValue={c.limiteParcelas} className="campo" /></Campo>
+                              <Campo rotulo="Escopo da base" nome={`esc-${c.id}`}><select id={`esc-${c.id}`} name="escopoBase" defaultValue={c.escopoBase ?? ''} className="campo"><option value="">não definido</option>{(Object.keys(ROTULO_ESCOPO) as EscopoBase[]).map((e) => <option key={e} value={e}>{ROTULO_ESCOPO[e]}</option>)}</select></Campo>
+                            </div>
+                          </AcoesVigencia>
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            ) : null}
           </Secao>
           {editar ? (
             <Dobra chave="cfg-config-estorno" titulo="Abrir nova vigência de participantes/critério">
@@ -230,8 +312,16 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
           <Secao titulo="Percentuais a devolver" descricao="Por tipo, por categoria e por vendedor. Vale o mais específico: exceção do vendedor, depois o percentual da categoria (ou supervisão/gerência), depois o padrão. O percentual é o vigente na data do CANCELAMENTO." semPadding>
             <div className="tabela-quadro">
               <table className="tabela">
-                <thead><tr><th>Tipo</th><th>Aplica-se a</th><th className="direita">Percentual</th><th>Vigência</th></tr></thead>
-                <tbody>{d.regras.map((r) => <tr key={r.id}><td>{r.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento'}</td><td>{r.titularVendedor ? <>Vendedor: {r.titularVendedor.nome}</> : r.participante ? nomeParticipante(r.participante) : 'padrão (demais)'}</td><td className="direita"><Percentual valor={r.percentual} /></td><td><Vig de={r.vigenteDe} ate={r.vigenteAte} /></td></tr>)}</tbody>
+                <thead><tr><th>Tipo</th><th>Aplica-se a</th><th className="direita">Percentual</th><th>Vigência</th>{editar ? <th>Ações</th> : null}</tr></thead>
+                <tbody>{d.regras.map((r) => <tr key={r.id}><td>{r.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento'}</td><td>{r.titularVendedor ? <>Vendedor: {r.titularVendedor.nome}</> : r.participante ? nomeParticipante(r.participante) : 'padrão (demais)'}</td><td className="direita"><Percentual valor={r.percentual} /></td><td><Vig de={r.vigenteDe} ate={r.vigenteAte} /></td>
+                  {editar ? (
+                    <td>
+                      <AcoesVigencia entidade="REGRA_ESTORNO" id={r.id} uso={d.usosVigencia.get(r.id) ?? 0} de={r.vigenteDe} ate={r.vigenteAte} corrigir={corrigirRegraEstornoAcao}>
+                        <Campo rotulo="Percentual (%)" nome={`pct-${r.id}`}><input id={`pct-${r.id}`} name="percentual" inputMode="decimal" defaultValue={r.percentual.toString()} className="campo numero" required /></Campo>
+                      </AcoesVigencia>
+                    </td>
+                  ) : null}
+                </tr>)}</tbody>
               </table>
             </div>
           </Secao>
@@ -256,8 +346,21 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
           <Secao titulo="Metas de promoção" descricao="O volume conta a carteira completa da pessoa, sempre pelo crédito total. A promoção é ato registrado, nunca automática. Mudar a meta não reclassifica quem já foi promovido." semPadding>
             <div className="tabela-quadro">
               <table className="tabela">
-                <thead><tr><th>De → Para</th><th className="direita">Volume mínimo</th><th className="direita">Alerta ao faltar</th><th>Abre documento</th><th>Vigência</th></tr></thead>
-                <tbody>{d.metas.map((m) => <tr key={m.id}><td className="font-semibold">{m.categoriaOrigem.nome} → {m.categoriaAlvo.nome}</td><td className="direita"><Dinheiro valor={m.volumeMinimo} /></td><td className="direita"><Dinheiro valor={m.alertaAoFaltar} /></td><td>{m.documentoExigido ?? <Traco />}</td><td><Vig de={m.vigenteDe} ate={m.vigenteAte} /></td></tr>)}</tbody>
+                <thead><tr><th>De → Para</th><th className="direita">Volume mínimo</th><th className="direita">Alerta ao faltar</th><th>Abre documento</th><th>Vigência</th>{editar ? <th>Ações</th> : null}</tr></thead>
+                <tbody>{d.metas.map((m) => <tr key={m.id}><td className="font-semibold">{m.categoriaOrigem.nome} → {m.categoriaAlvo.nome}</td><td className="direita"><Dinheiro valor={m.volumeMinimo} /></td><td className="direita"><Dinheiro valor={m.alertaAoFaltar} /></td><td>{m.documentoExigido ?? <Traco />}</td><td><Vig de={m.vigenteDe} ate={m.vigenteAte} /></td>
+                  {editar ? (
+                    <td>
+                      <AcoesVigencia entidade="META" id={m.id} uso={0} de={m.vigenteDe} ate={m.vigenteAte} corrigir={corrigirMetaAcao}>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Campo rotulo="Para" nome={`alvo-${m.id}`}><select id={`alvo-${m.id}`} name="categoriaAlvoId" defaultValue={m.categoriaAlvoId} className="campo">{d.categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></Campo>
+                          <Campo rotulo="Abre documento" nome={`doc-${m.id}`}><select id={`doc-${m.id}`} name="documentoExigido" defaultValue={m.documentoExigido ?? ''} className="campo"><option value="">—</option><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select></Campo>
+                          <Campo rotulo="Volume mínimo (R$)" nome={`vol-${m.id}`}><input id={`vol-${m.id}`} name="volumeMinimo" inputMode="decimal" defaultValue={m.volumeMinimo.toFixed(2).replace('.', ',')} className="campo numero" required /></Campo>
+                          <Campo rotulo="Alerta ao faltar (R$)" nome={`al-${m.id}`}><input id={`al-${m.id}`} name="alertaAoFaltar" inputMode="decimal" defaultValue={m.alertaAoFaltar.toFixed(2).replace('.', ',')} className="campo numero" required /></Campo>
+                        </div>
+                      </AcoesVigencia>
+                    </td>
+                  ) : null}
+                </tr>)}</tbody>
               </table>
             </div>
           </Secao>
@@ -283,7 +386,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
           <Secao titulo="Modalidades flex" descricao="Flex reduz a BASE da comissão (Flex 50 = base é 50% do crédito). Não reduz a produção que conta para promoção. Apelidos = textos da base de clientes que identificam a modalidade." semPadding>
             <div className="tabela-quadro">
               <table className="tabela">
-                <thead><tr><th>Código</th><th>Nome</th><th className="direita">Base (% do crédito)</th><th>Vigência</th><th>Apelidos no arquivo</th></tr></thead>
+                <thead><tr><th>Código</th><th>Nome</th><th className="direita">Base (% do crédito)</th><th>Vigência</th><th>Apelidos no arquivo</th>{editar ? <th>Ações</th> : null}</tr></thead>
                 <tbody>{d.flex.map((f) => (
                   <tr key={f.id}>
                     <td className="numero font-semibold">{f.codigo}</td><td>{f.nome}</td><td className="direita"><Percentual valor={f.percentual} /></td><td><Vig de={f.vigenteDe} ate={f.vigenteAte} /></td>
@@ -294,6 +397,16 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                         </FormularioAcao>
                       ) : f.aliases.join(', ')}
                     </td>
+                    {editar ? (
+                      <td>
+                        <AcoesVigencia entidade="FLEX" id={f.id} uso={d.usosVigencia.get(f.id) ?? 0} de={f.vigenteDe} ate={f.vigenteAte} corrigir={corrigirFlexAcao}>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Campo rotulo="Nome" nome={`fn-${f.id}`}><input id={`fn-${f.id}`} name="nome" defaultValue={f.nome} className="campo" required /></Campo>
+                            <Campo rotulo="Base (% do crédito)" nome={`fp-${f.id}`}><input id={`fp-${f.id}`} name="percentual" inputMode="decimal" defaultValue={f.percentual.toString()} className="campo numero" required /></Campo>
+                          </div>
+                        </AcoesVigencia>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}</tbody>
               </table>
@@ -317,10 +430,31 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
           <Secao titulo="Segmentos" descricao="Imóveis e Móveis na carga inicial. Apelidos = textos da base de clientes que identificam o segmento." semPadding>
             <div className="tabela-quadro">
               <table className="tabela">
-                <thead><tr><th>Código</th><th>Nome</th><th>Apelidos</th></tr></thead>
+                <thead><tr><th>Código</th><th>Nome</th><th>Situação</th><th>Apelidos</th>{editar ? <th>Ações</th> : null}</tr></thead>
                 <tbody>{d.segmentos.map((g) => (
-                  <tr key={g.id}><td className="numero font-semibold">{g.codigo}</td><td>{g.nome}</td>
-                    <td className="min-w-[320px]">{editar ? <FormularioAcao acao={aliasesSegmentoAcao} rotulo="Salvar" emLinha><input type="hidden" name="id" value={g.id} /><input name="aliases" aria-label="Apelidos" defaultValue={g.aliases.join(', ')} className="campo w-80 text-[12px]" /></FormularioAcao> : g.aliases.join(', ')}</td></tr>
+                  <tr key={g.id}><td className="numero font-semibold">{g.codigo}</td><td>{g.nome}</td><td>{g.ativo ? <Etiqueta tom="verde">ativo</Etiqueta> : <Etiqueta>desativado</Etiqueta>}</td>
+                    <td className="min-w-[320px]">{editar ? <FormularioAcao acao={aliasesSegmentoAcao} rotulo="Salvar" emLinha><input type="hidden" name="id" value={g.id} /><input name="aliases" aria-label="Apelidos" defaultValue={g.aliases.join(', ')} className="campo w-80 text-[12px]" /></FormularioAcao> : g.aliases.join(', ')}</td>
+                    {editar ? (
+                      <td>
+                        <details className="min-w-[110px]"><summary className="cursor-pointer text-[12px] font-semibold text-wr-verde">Editar</summary>
+                          <div className="mt-2 min-w-[280px] space-y-3 rounded border border-wr-borda bg-wr-fundo p-3">
+                            <FormularioAcao acao={editarSegmentoAcao} rotulo="Salvar">
+                              <input type="hidden" name="id" value={g.id} />
+                              <Campo rotulo="Nome" nome={`sn-${g.id}`}><input id={`sn-${g.id}`} name="nome" defaultValue={g.nome} className="campo" required /></Campo>
+                              <label className="block text-[13px]"><input type="checkbox" name="ativo" value="true" defaultChecked={g.ativo} /> Ativo</label>
+                              <Campo rotulo="Motivo" nome={`sm-${g.id}`}><input id={`sm-${g.id}`} name="motivo" className="campo" required minLength={3} /></Campo>
+                            </FormularioAcao>
+                            {(d.usosSegmento.get(g.id) ?? 0) === 0 ? (
+                              <FormularioAcao acao={excluirSegmentoAcao} rotulo="Excluir segmento" perigo emLinha confirmacao="O segmento não é usado por nenhuma tabela nem venda e será excluído.">
+                                <input type="hidden" name="id" value={g.id} />
+                                <input name="motivo" aria-label="Motivo da exclusão" placeholder="Motivo" className="campo w-48" required minLength={3} />
+                              </FormularioAcao>
+                            ) : <p className="text-[12px] text-wr-texto-3">Em uso em {d.usosSegmento.get(g.id)} registro(s): desative em vez de excluir.</p>}
+                          </div>
+                        </details>
+                      </td>
+                    ) : null}
+                  </tr>
                 ))}</tbody>
               </table>
             </div>

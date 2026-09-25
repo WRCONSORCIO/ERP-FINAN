@@ -32,7 +32,8 @@ export function planejarNovaVigencia(atual: ComVigencia | null, inicioNova: Date
   if (inicioNova.getTime() <= atual.vigenteDe.getTime()) {
     throw new ErroDeDominio(
       `A nova vigência precisa começar depois de ${formatarData(atual.vigenteDe)} (início da vigência atual). ` +
-        'Alterar a regra não reescreve o passado.',
+        'Alterar a regra não reescreve o passado. Se a vigência atual ainda não foi usada em nenhum cálculo, ' +
+        'use "Corrigir / excluir" na linha dela para mudar a data de início.',
       'VIGENCIA_RETROATIVA',
     );
   }

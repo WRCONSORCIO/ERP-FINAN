@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { executar, formParaObjeto, type Resultado } from '@/servidor/acao';
 import * as R from '@/servidor/servicos/regras';
+import * as V from '@/servidor/servicos/vigencias';
 
 type Estado = Resultado<unknown> | null;
 
@@ -50,4 +51,35 @@ export async function criarSegmentoAcao(_: Estado, fd: FormData) {
 }
 export async function aliasesSegmentoAcao(_: Estado, fd: FormData) {
   return executar('regras', 'editar', R.esquemaAliases, formParaObjeto(fd), async (s, d) => { await R.editarAliasesSegmento(s, d); return { mensagem: 'Apelidos salvos (valem para vendas futuras).' }; });
+}
+
+// ------------------------------------------------------------------ Correção e exclusão de vigência sem uso
+
+export async function excluirVigenciaAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', V.esquemaExcluirVigencia, formParaObjeto(fd), async (s, d) => {
+    const r = await V.excluirVigencia(s, d);
+    return { mensagem: r.anteriorReaberta ? 'Vigência excluída. A vigência anterior voltou a valer pelo período.' : 'Vigência excluída.' };
+  });
+}
+const CORRIGIDA = 'Vigência corrigida. Vendas em pendência voltaram para a fila de apuração.';
+export async function corrigirRegraEstornoAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', V.esquemaCorrigirRegraEstorno, formParaObjeto(fd), async (s, d) => { await V.corrigirRegraEstorno(s, d); return { mensagem: CORRIGIDA }; });
+}
+export async function corrigirTabelaAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', V.esquemaCorrigirTabela, formParaObjeto(fd), async (s, d) => { await V.corrigirTabela(s, d); return { mensagem: CORRIGIDA }; });
+}
+export async function corrigirConfigEstornoAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', V.esquemaCorrigirConfigEstorno, formParaObjeto(fd), async (s, d) => { await V.corrigirConfigEstorno(s, d); return { mensagem: CORRIGIDA }; });
+}
+export async function corrigirMetaAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', V.esquemaCorrigirMeta, formParaObjeto(fd), async (s, d) => { await V.corrigirMeta(s, d); return { mensagem: 'Meta corrigida.' }; });
+}
+export async function corrigirFlexAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', V.esquemaCorrigirFlex, formParaObjeto(fd), async (s, d) => { await V.corrigirFlex(s, d); return { mensagem: 'Flex corrigido.' }; });
+}
+export async function editarSegmentoAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', V.esquemaEditarSegmento, formParaObjeto(fd), async (s, d) => { await V.editarSegmento(s, d); return { mensagem: 'Segmento atualizado.' }; });
+}
+export async function excluirSegmentoAcao(_: Estado, fd: FormData) {
+  return executar('regras', 'editar', z.object({ id: z.string().min(1), motivo: z.string().trim().min(3, 'Explique o motivo') }), formParaObjeto(fd), async (s, d) => { await V.excluirSegmento(s, d); return { mensagem: 'Segmento excluído.' }; });
 }

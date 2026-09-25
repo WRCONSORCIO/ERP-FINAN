@@ -68,7 +68,7 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
       </Secao>
 
       <Secao id="diagnostico" titulo="Vendas que ainda não geraram comissão" descricao="Cada motivo, quantas vendas, exemplos e como resolver. Resolvido o cadastro, clique em “Processar pendências agora”." semPadding>
-        {d.diagnostico.length === 0 ? <EstadoVazio titulo="Nenhuma pendência" icone="ok">Todo dinheiro que deveria ter sido apurado foi apurado.</EstadoVazio> : (
+        {d.diagnostico.length === 0 ? <EstadoVazio titulo="Nada pendente" icone="ok">Todas as vendas geraram as comissões que deviam gerar.</EstadoVazio> : (
           <div className="tabela-quadro">
             <table className="tabela">
               <thead><tr><th>Motivo</th><th className="direita">Vendas</th><th>Exemplos</th><th>Como resolver</th></tr></thead>

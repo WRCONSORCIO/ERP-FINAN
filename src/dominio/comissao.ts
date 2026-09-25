@@ -3,7 +3,7 @@ import { formatarData, paraISO } from '@/lib/datas';
 
 export type Destino = 'VENDEDOR' | 'SUPERVISAO' | 'GERENCIA';
 export const DESTINOS: readonly Destino[] = ['VENDEDOR', 'SUPERVISAO', 'GERENCIA'];
-export const ROTULO_DESTINO: Record<Destino, string> = { VENDEDOR: 'Vendedor', SUPERVISAO: 'Supervisão', GERENCIA: 'Gerência' };
+export const ROTULO_DESTINO: Record<Destino, string> = { VENDEDOR: 'Vendedor', SUPERVISAO: 'Supervisor', GERENCIA: 'Gerente' };
 
 export interface CategoriaDaVenda {
   id: string;

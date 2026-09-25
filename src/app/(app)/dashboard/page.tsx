@@ -84,7 +84,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </Secao>
       ) : null}
 
-      <Secao titulo="Produção por gerência" descricao="Gerência congelada na venda." semPadding>
+      <Secao titulo="Produção por gerência" descricao="Pela gerência da época de cada venda." semPadding>
         {d.tabela.length === 0 ? <EstadoVazio titulo="Nenhuma venda no período">Importe a base de clientes em <Link href="/importacoes">Importações</Link>.</EstadoVazio> : (
           <div className="tabela-quadro">
             <table className="tabela">

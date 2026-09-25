@@ -72,7 +72,7 @@ export default async function Acessos() {
               <details className="w-full sm:w-auto">
                 <summary className="cursor-pointer text-[12px] font-semibold text-wr-verde">Gerenciar</summary>
                 <div className="mt-2 space-y-3 rounded-lg border border-wr-borda p-3">
-                  <FormularioAcao acao={alterarUsuarioAcao} rotulo="Salvar alteração" confirmacao="Mudar perfil ou escopo vale na próxima tela que a pessoa abrir.">
+                  <FormularioAcao acao={alterarUsuarioAcao} rotulo="Salvar alteração" confirmacao="A mudança vale na próxima tela que a pessoa abrir.">
                     <input type="hidden" name="id" value={u.id} />
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Campo rotulo="Nome" nome={`nome-${u.id}`}><input id={`nome-${u.id}`} name="nome" defaultValue={u.nome} className="campo" /></Campo>

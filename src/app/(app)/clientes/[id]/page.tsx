@@ -53,34 +53,34 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
           <Item rotulo="Parcelas pagas"><span className="numero">{cota.parcelasPagas}</span></Item>
           <Item rotulo="Situação">{cota.cancelada ? <Etiqueta tom="vermelho">{cota.situacao}</Etiqueta> : <Etiqueta>{cota.situacao}</Etiqueta>}</Item>
           <Item rotulo="Cancelamento">{cota.dataCancelamento ? <><DataCurta valor={cota.dataCancelamento} /> <span className="block text-[11px] text-wr-texto-3">{cota.origemDataCancelamento}</span></> : <Traco />}</Item>
-          <Item rotulo="Vendedor na importação">{cota.vendedorNomeImportado ?? <Traco />}{cota.vendedorDocImportado ? <span className="numero block text-[11px] text-wr-texto-3">{formatarDocumento(cota.vendedorDocImportado)}</span> : null}</Item>
+          <Item rotulo="Vendedor no arquivo">{cota.vendedorNomeImportado ?? <Traco />}{cota.vendedorDocImportado ? <span className="numero block text-[11px] text-wr-texto-3">{formatarDocumento(cota.vendedorDocImportado)}</span> : null}</Item>
           <Item rotulo="Contato">{cota.anonimizadaEm ? <Etiqueta>anonimizado</Etiqueta> : <>{cota.clienteEmail ?? <Traco />}{cota.clienteTelefone ? <span className="block">{cota.clienteTelefone}</span> : null}</>}</Item>
         </dl>
       </Secao>
 
-      <Secao titulo="Congelado na venda" descricao={`Nada disto muda com o cadastro atual. Congelado em ${formatarDataHora(cota.snapCongeladoEm)} por ${({ IMPORTACAO: 'importação', TRANSFERENCIA: 'transferência', RECONGELAMENTO: 'recongelamento' } as Record<string, string>)[cota.snapOrigem ?? ''] ?? '—'}. Só importação (criação), transferência e recongelamento alteram este bloco.`}>
+      <Secao titulo="Dados usados no cálculo desta venda" descricao={`Fotografia do cadastro na data da venda: mudar o cadastro depois não altera esta venda. Registrado em ${formatarDataHora(cota.snapCongeladoEm)} por ${({ IMPORTACAO: 'importação', TRANSFERENCIA: 'transferência de vendedor', RECONGELAMENTO: 'atualização manual' } as Record<string, string>)[cota.snapOrigem ?? ''] ?? '—'}.`}>
         <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <Item rotulo="Vendedor">{cota.snapVendedor ? <Link href={`/vendedores/${cota.snapVendedor.pessoaId}`}>{cota.snapVendedor.pessoa.nome}</Link> : <Etiqueta tom="ambar">sem vendedor</Etiqueta>}{cota.snapVendedor ? <span className="numero block text-[11px] text-wr-texto-3">{cota.snapVendedor.tipoDocumento} {formatarDocumento(cota.snapVendedor.documento)}</span> : null}</Item>
           <Item rotulo="Categoria da venda">{cota.snapCategoria ? <>{cota.snapCategoria.nome}<span className="block text-[11px] text-wr-texto-3">paga pela WR: {cota.snapPagaPelaWr ? 'sim' : 'não'} · supervisão: {cota.snapGeraSupervisao ? 'sim' : 'não'} · gerência: {cota.snapGeraGerencia ? 'sim' : 'não'}</span></> : <Etiqueta tom="ambar">sem categoria</Etiqueta>}</Item>
           <Item rotulo="Segmento">{cota.snapSegmento?.nome ?? <Etiqueta tom="ambar">não reconhecido: {cota.segmentoTexto ?? 'vazio'}</Etiqueta>}</Item>
           <Item rotulo="Flex">{cota.snapModalidadeFlex ? <>{cota.snapModalidadeFlex.nome} · <Percentual valor={cota.snapModalidadeFlex.percentual} /></> : <Etiqueta tom="ambar">não reconhecido: {cota.flexTexto ?? 'vazio'}</Etiqueta>}</Item>
-          <Item rotulo="Equipe / gerência">{cota.snapEquipe ? `${cota.snapEquipe.nome} · ${cota.snapGerencia?.nome ?? '—'}` : <Etiqueta tom="ambar">sem estrutura</Etiqueta>}</Item>
+          <Item rotulo="Equipe / gerência">{cota.snapEquipe ? `${cota.snapEquipe.nome} · ${cota.snapGerencia?.nome ?? '—'}` : <Etiqueta tom="ambar">sem equipe</Etiqueta>}</Item>
           <Item rotulo="Supervisor">{f.supervisor?.nome ?? <Traco />}</Item>
           <Item rotulo="Gerente">{f.gerente?.nome ?? <Traco />}</Item>
           <Item rotulo="Recuperação">{cota.snapRecuperacao ? <Etiqueta tom="ambar">venda feita em recuperação</Etiqueta> : 'não'}</Item>
         </dl>
         {pode(s.perfil, 'cotas', 'tudo') ? (
           <div className="mt-4 border-t border-wr-borda pt-3">
-            <FormularioAcao acao={recongelarAcao} rotulo="Recongelar esta venda" perigo emLinha confirmacao="Recongelar resolve o snapshot pelo cadastro de HOJE, na data original da venda. Comissões que mudarem são canceladas e recriadas; as que já estão em folha fechada não mudam — a diferença vira ajuste.">
+            <FormularioAcao acao={recongelarAcao} rotulo="Atualizar com o cadastro atual" perigo emLinha confirmacao="Refaz os dados desta venda com o cadastro atual (categoria, equipe e responsáveis na data da venda) e recalcula. O que já foi pago em folha fechada não muda: a diferença entra como ajuste na próxima folha.">
               <input type="hidden" name="cotaId" value={cota.id} />
-              <input name="motivo" aria-label="Motivo" placeholder="Motivo do recongelamento" className="campo w-72" required />
+              <input name="motivo" aria-label="Motivo" placeholder="Motivo" className="campo w-72" required />
             </FormularioAcao>
           </div>
         ) : null}
       </Secao>
 
       {cota.pendencias.length > 0 ? (
-        <Aviso tom="ambar" titulo="Dinheiro não apurado nesta venda">
+        <Aviso tom="ambar" titulo="Por que esta venda ainda não gerou (toda a) comissão">
           <ul className="list-inside list-disc">{cota.pendencias.map((p) => <li key={p.id}>{p.descricao}</li>)}</ul>
         </Aviso>
       ) : null}
@@ -104,10 +104,10 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
       ))}
 
       <Secao titulo="Comissões" descricao="Cada linha é uma obrigação sobre uma parcela. Canceladas ficam como histórico (append-only). Clique em “De onde saiu” para a memória de cálculo." semPadding>
-        {cota.comissoes.length === 0 ? <EstadoVazio titulo="Nenhuma comissão apurada">Veja as pendências acima, ou aguarde a fila de apuração.</EstadoVazio> : (
+        {cota.comissoes.length === 0 ? <EstadoVazio titulo="Nenhuma comissão calculada">Veja o motivo acima, ou use “Processar pendências agora” em Importações.</EstadoVazio> : (
           <div className="tabela-quadro">
             <table className="tabela">
-              <thead><tr><th>Destino</th><th className="direita">Parcela</th><th>Quem recebe</th><th className="direita">Base</th><th className="direita">%</th><th className="direita">Valor</th><th>Quem paga</th><th>Situação</th><th>Memória</th></tr></thead>
+              <thead><tr><th>Quem</th><th className="direita">Parcela</th><th>Quem recebe</th><th className="direita">Base</th><th className="direita">%</th><th className="direita">Valor</th><th>Quem paga</th><th>Situação</th><th>Memória</th></tr></thead>
               <tbody>
                 {cota.comissoes.map((c) => (
                   <tr key={c.id} className={c.status === 'CANCELADA' ? 'opacity-55' : ''}>
@@ -132,17 +132,17 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
         )}
       </Secao>
 
-      <Secao titulo="Estorno" descricao="Percentual pela data do cancelamento; base pela comissão da data da venda. Único por venda e destino — nunca cobrado duas vezes." semPadding>
+      <Secao titulo="Estorno" descricao="O percentual é o da data do cancelamento; o valor base é a comissão pela regra da data da venda. Nunca é cobrado duas vezes." semPadding>
         {cota.estornos.length === 0 ? <EstornoVazio cancelada={cota.cancelada} /> : (
           <div className="tabela-quadro">
             <table className="tabela">
-              <thead><tr><th>Destino</th><th>Tipo</th><th>Titular</th><th className="direita">Comissão base</th><th className="direita">%</th><th className="direita">Valor</th><th>Débito adm.</th><th>Situação</th><th>Memória</th></tr></thead>
+              <thead><tr><th>Quem</th><th>Tipo</th><th>Cobrar de</th><th className="direita">Comissão base</th><th className="direita">%</th><th className="direita">Valor</th><th>Débito adm.</th><th>Situação</th><th>Memória</th></tr></thead>
               <tbody>
                 {cota.estornos.map((e) => (
                   <tr key={e.id} className={e.status === 'INVALIDADO' ? 'opacity-55' : ''}>
                     <td>{ROTULO_DESTINO[e.destino as Destino]}</td>
                     <td>{e.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento'}</td>
-                    <td>{e.titularPessoa?.nome ?? <Etiqueta tom="vermelho">SEM TITULAR</Etiqueta>}</td>
+                    <td>{e.titularPessoa?.nome ?? <Etiqueta tom="vermelho">SEM RESPONSÁVEL</Etiqueta>}</td>
                     <td className="direita"><Dinheiro valor={e.comissaoBase} /></td>
                     <td className="direita"><Percentual valor={e.percentual} /></td>
                     <td className="direita"><Dinheiro valor={e.valor} forte tom="vermelho" /></td>
@@ -182,7 +182,7 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
           </ul>
         )}
         {podeTransferir ? (
-          <FormularioAcao acao={transferirAcao} rotulo="Transferir venda" perigo confirmacao="O snapshot é recongelado com o novo vendedor, na data original da venda. Comissões não pagas são canceladas e recriadas; as já em folha fechada ficam, e a diferença vira ajuste. Bônus já atribuído não muda.">
+          <FormularioAcao acao={transferirAcao} rotulo="Transferir venda" perigo confirmacao="A venda passa para o novo vendedor e é recalculada. Comissão ainda não paga muda de dono; a que já foi paga em folha fechada fica, e a diferença entra como ajuste na próxima folha. Bônus já atribuído não muda.">
             <input type="hidden" name="cotaId" value={cota.id} />
             <div className="grid gap-2 sm:grid-cols-2">
               <Campo rotulo="Novo vendedor" nome="vendedorNovoId">
@@ -217,5 +217,5 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
 }
 
 function EstornoVazio({ cancelada }: { cancelada: boolean }) {
-  return <EstadoVazio titulo={cancelada ? 'Venda cancelada sem estorno' : 'Venda não cancelada'}>{cancelada ? 'O cancelamento não se enquadra no critério, os destinos não participam, ou há pendência acima.' : 'Estorno só existe quando a venda cai.'}</EstadoVazio>;
+  return <EstadoVazio titulo={cancelada ? 'Venda cancelada sem estorno' : 'Venda não cancelada'}>{cancelada ? 'O cancelamento não se encaixa nas regras de estorno, quem vendeu não devolve, ou falta algo (veja acima).' : 'Estorno só existe quando a venda cai.'}</EstadoVazio>;
 }

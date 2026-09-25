@@ -5,14 +5,14 @@ import { exigirPagina } from '@/servidor/sessao';
 import { listarVigenciasFuturas } from '@/servidor/consultas/vendedores';
 import { DataCurta, EstadoVazio, Pagina, Secao } from '@/ui/base';
 
-export const metadata: Metadata = { title: 'Vigências que começam no futuro' };
+export const metadata: Metadata = { title: 'Datas no futuro' };
 export const dynamic = 'force-dynamic';
 
 export default async function VigenciasFuturas() {
   const s = await exigirPagina('vendedores', 'editar');
   const { categorias, alocacoes } = await listarVigenciasFuturas(s);
   return (
-    <Pagina titulo="Vigências que começam no futuro" descricao="Vigência no futuro não vale para venda nenhuma — costuma ser erro de ano na data do cadastro. Corrija a data na ficha do vendedor.">
+    <Pagina titulo="Cadastros com data no futuro" descricao="Uma data no futuro não vale para nenhuma venda de hoje — costuma ser erro de digitação no ano. Corrija a data na ficha do vendedor.">
       <Secao titulo="Categorias" semPadding>
         {categorias.length === 0 ? <EstadoVazio titulo="Nenhuma categoria com início futuro" icone="ok" /> : (
           <div className="tabela-quadro"><table className="tabela">
@@ -24,7 +24,7 @@ export default async function VigenciasFuturas() {
         )}
       </Secao>
       <Secao titulo="Equipes" semPadding>
-        {alocacoes.length === 0 ? <EstadoVazio titulo="Nenhuma alocação com início futuro" icone="ok" /> : (
+        {alocacoes.length === 0 ? <EstadoVazio titulo="Nenhuma equipe com início no futuro" icone="ok" /> : (
           <div className="tabela-quadro"><table className="tabela">
             <thead><tr><th>Pessoa</th><th>Documento</th><th>Equipe</th><th>Começa em</th></tr></thead>
             <tbody>{alocacoes.map((a) => (

@@ -40,7 +40,7 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
         <Cartao rotulo="Já em folha" valor={<Dinheiro valor={d.totais.emFolha} />} tom="neutro" detalhe="Folhas fechadas ainda não pagas" />
         <Cartao rotulo="Estorno a cobrar" valor={<Dinheiro valor={d.totais.estornoACobrar} />} tom="ambar" detalhe="Informação: não é descontado automaticamente da folha" href="/estornos" />
       </div>
-      {!d.estornoSemTitular.isZero() ? <Aviso tom="vermelho" titulo="Estorno sem titular">{formatarMoeda(d.estornoSemTitular)} em estornos não têm de quem ser cobrados. Veja em <Link href="/estornos">Estornos</Link>.</Aviso> : null}
+      {!d.estornoSemTitular.isZero() ? <Aviso tom="vermelho" titulo="Estorno sem responsável para cobrar">{formatarMoeda(d.estornoSemTitular)} em estornos não têm de quem ser cobrados. Veja em <Link href="/estornos">Estornos</Link>.</Aviso> : null}
 
       <Secao titulo="Beneficiários" descricao="Clique no nome para ver o detalhe por cota e parcela, com a memória de cálculo de cada valor." semPadding>
         {d.linhas.length === 0 ? <EstadoVazio titulo="Nada a pagar">Sem comissões apuradas pagas pela WR no seu recorte.</EstadoVazio> : (
@@ -93,7 +93,7 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
       ) : null}
 
       {podeEditar ? (
-        <Secao titulo="Fechar folha" descricao="Só o liberado entra. Fechar congela: as comissões incluídas não são mais afetadas por reapuração — correção vira ajuste na folha seguinte. Estorno não é descontado.">
+        <Secao titulo="Fechar folha" descricao="Entra só a comissão liberada (o cliente já pagou a parcela). Depois de fechada, a folha não muda mais: qualquer correção entra como ajuste na folha seguinte. Estorno não é descontado automaticamente.">
           <form method="get" className="mb-3 flex flex-wrap items-end gap-2">
             <Campo rotulo="Competência" nome="competencia-previa">
               <input id="competencia-previa" type="month" name="competencia" defaultValue={competencia} className="campo w-44" />
@@ -103,7 +103,7 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
           {previa ? (
             <p className="mb-3 text-[13px]">Entrariam na folha de <strong>{rotuloMesLongo(previa.competencia)}</strong>: <span className="numero font-semibold">{previa.quantidade}</span> comissão(ões) liberada(s) até o fim do mês, total <Dinheiro valor={previa.total} forte />.</p>
           ) : null}
-          <FormularioAcao acao={fecharFolhaAcao} rotulo={`Fechar folha de ${rotuloMesLongo(competencia)}`} perigo confirmacao="Fechar a folha é irreversível: as comissões incluídas ficam congeladas nesta folha. Correções futuras entram como ajuste na próxima folha.">
+          <FormularioAcao acao={fecharFolhaAcao} rotulo={`Fechar folha de ${rotuloMesLongo(competencia)}`} perigo confirmacao="Fechar a folha não tem volta: os valores ficam fixos. Correções futuras entram como ajuste na próxima folha.">
             <input type="hidden" name="competencia" value={competencia} />
           </FormularioAcao>
           <p className="mt-2 text-[12px] text-wr-texto-3">Competência anterior: <Link href={`/a-pagar?competencia=${deslocarCompetencia(competencia, -1)}`}>{rotuloMesLongo(deslocarCompetencia(competencia, -1))}</Link></p>

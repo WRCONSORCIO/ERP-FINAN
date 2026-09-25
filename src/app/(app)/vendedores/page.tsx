@@ -97,8 +97,8 @@ export default async function Vendedores({ searchParams }: { searchParams: Promi
       }
     >
       {dados.temVigenciaFutura > 0 && podeEditar ? (
-        <Aviso tom="ambar" titulo={`${dados.temVigenciaFutura} vigência(s) começando no futuro`}>
-          Vigência no futuro não vale para venda nenhuma — costuma ser erro de ano na data do cadastro. <Link href="/vendedores/vigencias-futuras">Conferir</Link>
+        <Aviso tom="ambar" titulo={`${dados.temVigenciaFutura} cadastro(s) com data de início no futuro`}>
+          Uma data no futuro não vale para nenhuma venda de hoje — costuma ser erro de digitação no ano. <Link href="/vendedores/vigencias-futuras">Conferir</Link>
         </Aviso>
       ) : null}
       {atingiram.length > 0 ? (
@@ -114,7 +114,7 @@ export default async function Vendedores({ searchParams }: { searchParams: Promi
       ) : null}
 
       <form method="get" className="cartao flex flex-wrap items-end gap-2 p-3" role="search">
-        <Campo rotulo="Buscar por nome ou documento" nome="busca" className="w-full max-w-md">
+        <Campo rotulo="Buscar por nome, CPF ou CNPJ" nome="busca" className="w-full max-w-md">
           <input id="busca" name="busca" defaultValue={busca} className="campo" placeholder="Nome, CPF ou CNPJ" />
         </Campo>
         <button className={classeBotao('primario')} type="submit">Buscar</button>
@@ -122,21 +122,21 @@ export default async function Vendedores({ searchParams }: { searchParams: Promi
       </form>
 
       {podeEditar ? (
-        <Dobra chave="vendedores-cadastrar" titulo="Cadastrar vendedor ou acrescentar documento">
+        <Dobra chave="vendedores-cadastrar" titulo="Cadastrar vendedor (ou mais um CPF/CNPJ para a mesma pessoa)">
           <div className="p-4">
             <FormularioAcao acao={cadastrarVendedorAcao} rotulo="Cadastrar">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Campo rotulo="Pessoa" nome="pessoaId" ajuda="Vazio = pessoa nova com o nome abaixo">
+                <Campo rotulo="É uma pessoa já cadastrada?" nome="pessoaId" ajuda="Escolha a pessoa para juntar este CPF/CNPJ a ela; senão, “Pessoa nova”">
                   <select id="pessoaId" name="pessoaId" className="campo" defaultValue="">
                     <option value="">Pessoa nova</option>
                     {pessoasParaDocumento.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
                   </select>
                 </Campo>
-                <Campo rotulo="Nome no documento" nome="nome"><input id="nome" name="nome" className="campo" required /></Campo>
+                <Campo rotulo="Nome (como no CPF/CNPJ)" nome="nome"><input id="nome" name="nome" className="campo" required /></Campo>
                 <Campo rotulo="Tipo" nome="tipoDocumento">
                   <select id="tipoDocumento" name="tipoDocumento" className="campo"><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select>
                 </Campo>
-                <Campo rotulo="Documento" nome="documento"><input id="documento" name="documento" className="campo numero" inputMode="numeric" required /></Campo>
+                <Campo rotulo="Número do CPF ou CNPJ" nome="documento"><input id="documento" name="documento" className="campo numero" inputMode="numeric" required /></Campo>
                 <Campo rotulo="Categoria" nome="categoriaId" ajuda="CPF é Iniciante; CNPJ é Veterano ou Expert">
                   <select id="categoriaId" name="categoriaId" className="campo">
                     {opcoes.categorias.map((c) => <option key={c.id} value={c.id}>{c.nome} ({c.documentosAceitos.join('/')})</option>)}
@@ -147,7 +147,7 @@ export default async function Vendedores({ searchParams }: { searchParams: Promi
                     {opcoes.equipes.map((e) => <option key={e.id} value={e.id}>{e.gerencia.nome} › {e.nome}</option>)}
                   </select>
                 </Campo>
-                <Campo rotulo="Vigente desde" nome="vigenteDe" ajuda="Data a partir da qual categoria e equipe valem">
+                <Campo rotulo="Trabalha com a WR desde" nome="vigenteDe" ajuda="Pode ser data passada. Vendas antes desta data não geram comissão para ele">
                   <input id="vigenteDe" name="vigenteDe" type="date" className="campo" defaultValue={opcoes.hojeISO} required />
                 </Campo>
               </div>

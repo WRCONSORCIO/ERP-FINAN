@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 function FormResponsavel({ papel, unidadeId, pessoas, hojeISO }: { papel: 'GERENTE' | 'SUPERVISOR'; unidadeId: string; pessoas: Array<{ id: string; nome: string }>; hojeISO: string }) {
   return (
-    <FormularioAcao acao={definirResponsavelAcao} rotulo={`Definir ${papel === 'GERENTE' ? 'gerente' : 'supervisor'}`} confirmacao="O responsável atual é encerrado no dia anterior. Vendas já importadas mantêm o responsável congelado.">
+    <FormularioAcao acao={definirResponsavelAcao} rotulo={`Definir ${papel === 'GERENTE' ? 'gerente' : 'supervisor'}`} confirmacao="Vale para as vendas a partir da data informada (pode ser passada). Vendas já calculadas continuam com o responsável da época.">
       <input type="hidden" name="papel" value={papel} />
       <input type="hidden" name="unidadeId" value={unidadeId} />
       <div className="grid gap-2 sm:grid-cols-3">
@@ -69,7 +69,7 @@ export default async function Estrutura() {
         </div>
       ) : null}
 
-      {arvore.length === 0 ? <div className="cartao"><EstadoVazio titulo="Nenhuma gerência no seu recorte" /></div> : null}
+      {arvore.length === 0 ? <div className="cartao"><EstadoVazio titulo="Nenhuma gerência que você possa ver" /></div> : null}
       {arvore.map((g) => (
         <Dobra
           key={g.id}
@@ -80,13 +80,13 @@ export default async function Estrutura() {
           <div className="space-y-3 p-3">
             {editarGerencia ? (
               <div className="grid gap-3 xl:grid-cols-2">
-                <Secao titulo="Gerente (com vigência)">
+                <Secao titulo="Gerente">
                   <ul className="mb-3 space-y-1 text-[12px]">
                     {g.responsaveis.map((r) => (
                       <li key={r.id} className="flex flex-wrap items-center gap-2">
                         <Monograma nome={r.pessoa.nome} tamanho={22} /> {r.pessoa.nome} · <DataCurta valor={r.vigenteDe} /> a {r.vigenteAte ? <DataCurta valor={r.vigenteAte} /> : <Etiqueta tom="verde">vigente</Etiqueta>}
                         {!r.vigenteAte ? (
-                          <FormularioAcao acao={encerrarResponsavelAcao} rotulo="Encerrar" perigo emLinha confirmacao="Sem gerente, vendas novas desta gerência ficam com a comissão de gerência em pendência.">
+                          <FormularioAcao acao={encerrarResponsavelAcao} rotulo="Encerrar" perigo emLinha confirmacao="Sem gerente, as vendas novas desta gerência ficam sem comissão de gerência até alguém ser informado.">
                             <input type="hidden" name="id" value={r.id} /><input name="vigenteAte" type="date" aria-label="Encerrar em" defaultValue={hojeISO} className="campo w-36" />
                           </FormularioAcao>
                         ) : null}
@@ -136,13 +136,13 @@ export default async function Estrutura() {
                   )}
                   {editarEquipe ? (
                     <div className="grid gap-3 xl:grid-cols-2">
-                      <Secao titulo="Supervisor (com vigência)">
+                      <Secao titulo="Supervisor">
                         <ul className="mb-3 space-y-1 text-[12px]">
                           {e.responsaveis.map((r) => (
                             <li key={r.id} className="flex flex-wrap items-center gap-2">
                               {r.pessoa.nome} · <DataCurta valor={r.vigenteDe} /> a {r.vigenteAte ? <DataCurta valor={r.vigenteAte} /> : <Etiqueta tom="verde">vigente</Etiqueta>}
                               {!r.vigenteAte ? (
-                                <FormularioAcao acao={encerrarResponsavelAcao} rotulo="Encerrar" perigo emLinha confirmacao="Sem supervisor, vendas novas desta equipe ficam com a comissão de supervisão em pendência.">
+                                <FormularioAcao acao={encerrarResponsavelAcao} rotulo="Encerrar" perigo emLinha confirmacao="Sem supervisor, as vendas novas desta equipe ficam sem comissão de supervisão até alguém ser informado.">
                                   <input type="hidden" name="id" value={r.id} /><input name="vigenteAte" type="date" aria-label="Encerrar em" defaultValue={hojeISO} className="campo w-36" />
                                 </FormularioAcao>
                               ) : null}

@@ -18,7 +18,7 @@ export default async function Notificacoes() {
   return (
     <Pagina
       titulo="Notificações"
-      descricao="Avisos que persistem até alguém ler: meta, promoção, pendência, divergência de conferência, erro de importação, bloqueio de login."
+      descricao="Avisos que ficam até alguém ler: meta atingida, venda sem comissão, arquivo com diferença, erro de importação, login bloqueado."
       acoes={naoLidas > 0 ? <form action={marcarTodasAcao}><button type="submit" className={classeBotao('secundario')}>Marcar todas como lidas</button></form> : null}
     >
       <Secao titulo={`${naoLidas} não lida(s)`} semPadding>

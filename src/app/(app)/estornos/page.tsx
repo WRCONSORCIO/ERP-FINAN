@@ -50,7 +50,7 @@ export default async function Estornos({ searchParams }: { searchParams: Promise
       </div>
 
       <Secao titulo="Por vendedor" semPadding>
-        {d.grupos.length === 0 ? <EstadoVazio titulo="Nenhum estorno neste recorte" icone="ok" /> : (
+        {d.grupos.length === 0 ? <EstadoVazio titulo="Nenhum estorno neste período" icone="ok" /> : (
           <div className="tabela-quadro">
             <table className="tabela">
               <thead><tr><th>Vendedor</th><th className="direita">Cobranças</th><th className="direita">Recuperação</th><th className="direita">Cancelamento</th><th className="direita">Total a estornar</th></tr></thead>
@@ -60,7 +60,7 @@ export default async function Estornos({ searchParams }: { searchParams: Promise
                     <td>
                       <Link href={`/estornos${queryDe(sp, { titular: g.chave })}#detalhe`} className="flex items-center gap-2 font-semibold text-wr-texto">
                         {g.pessoaId ? <Monograma nome={g.nome} tamanho={24} /> : null}
-                        {g.pessoaId ? g.nome : <Etiqueta tom="vermelho">SEM TITULAR</Etiqueta>}
+                        {g.pessoaId ? g.nome : <Etiqueta tom="vermelho">SEM RESPONSÁVEL</Etiqueta>}
                       </Link>
                     </td>
                     <td className="direita numero">{g.cobrancas}</td>

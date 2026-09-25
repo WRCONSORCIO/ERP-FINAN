@@ -19,14 +19,14 @@ export default async function SemCadastro() {
   return (
     <Pagina
       titulo="Vendem e não têm cadastro"
-      descricao="Nomes e documentos que aparecem na carteira sem cadastro comercial. Enquanto estiverem aqui, as vendas deles não geram comissão — é dinheiro parado em pendência."
+      descricao="Vendedores que aparecem nos arquivos da administradora mas não estão cadastrados. Enquanto estiverem aqui, as vendas deles não geram comissão."
       acoes={<LinkBotao href="/vendedores" icone="vendedores">Cadastrar vendedor</LinkBotao>}
     >
-      <Secao titulo={`${linhas.length} vendedor(es) sem cadastro`} descricao="O casamento é por documento; o nome só casa quando aponta para um único cadastro. Abreviação e nome do meio a mais não casam — vincule aqui, é uma decisão registrada." semPadding>
+      <Secao titulo={`${linhas.length} vendedor(es) sem cadastro`} descricao="O sistema reconhece o vendedor pelo CPF/CNPJ, ou pelo nome quando ele é idêntico ao cadastro. Nome abreviado ou diferente não é reconhecido sozinho: ligue-o aqui a um vendedor já cadastrado, ou cadastre um novo." semPadding>
         {linhas.length === 0 ? <EstadoVazio titulo="Nenhuma venda aguardando cadastro" icone="ok" /> : (
           <div className="tabela-quadro">
             <table className="tabela">
-              <thead><tr><th>Nome na importação</th><th>Documento</th><th className="direita">Vendas</th><th className="direita">Crédito</th><th>Primeira</th><th>Última</th><th>Vincular a um documento já cadastrado</th></tr></thead>
+              <thead><tr><th>Nome no arquivo</th><th>CPF/CNPJ</th><th className="direita">Vendas</th><th className="direita">Crédito</th><th>Primeira</th><th>Última</th><th>É o mesmo que este vendedor cadastrado</th></tr></thead>
               <tbody>
                 {linhas.map((l, i) => (
                   <tr key={`${l.documento ?? ''}-${l.nome ?? ''}-${i}`}>

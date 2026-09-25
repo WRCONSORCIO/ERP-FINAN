@@ -37,7 +37,7 @@ export default async function Bonus({ searchParams }: { searchParams: Promise<Pa
         <Cartao rotulo="Sem vínculo com a carteira" valor={<Dinheiro valor={d.semVinculo.valor} />} tom={d.semVinculo.quantidade > 0 ? 'ambar' : 'verde'} detalhe={<Link href={`/bonus${queryDe(sp, { semVinculo: semVinculo ? null : '1', pagina: null })}`}>{semVinculo ? 'mostrar todos' : `${d.semVinculo.quantidade} evento(s) — ver só estes`}</Link>} />
       </div>
       {pode(s.perfil, 'bonus', 'editar') && d.semVinculo.quantidade > 0 ? (
-        <Secao titulo="Reconciliar com a carteira" descricao="Tenta casar os bônus sem vínculo com cotas importadas depois. A atribuição encontrada é congelada e auditada.">
+        <Secao titulo="Reconciliar com a carteira" descricao="Tenta ligar os bônus sem venda identificada às vendas que chegaram depois. A ligação encontrada fica registrada.">
           <FormularioAcao acao={reconciliarBonusAcao} rotulo="Reconciliar agora" />
         </Secao>
       ) : null}
@@ -48,7 +48,7 @@ export default async function Bonus({ searchParams }: { searchParams: Promise<Pa
         )}
       </Secao>
       <Secao titulo="Eventos" semPadding>
-        {d.itens.length === 0 ? <EstadoVazio titulo="Nenhum evento neste recorte" /> : (
+        {d.itens.length === 0 ? <EstadoVazio titulo="Nenhum bônus neste período" /> : (
           <div className="tabela-quadro">
             <table className="tabela">
               <thead><tr><th>Consorciado</th><th>Grupo/Cota</th><th>Contrato</th><th>Vendedor na importação</th><th>Equipe</th><th className="direita">Parc.</th><th className="direita">Valor do evento</th><th className="direita">% incentivo</th><th className="direita">Bônus recebido</th><th>Data</th></tr></thead>

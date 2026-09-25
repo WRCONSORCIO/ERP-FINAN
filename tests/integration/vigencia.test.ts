@@ -150,6 +150,26 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     expect((await prisma.estorno.findFirstOrThrow({ where: { destino: 'VENDEDOR' } })).percentual.toFixed(2)).toBe('50.00');
   });
 
+  it('flex reduz a base (Flex 10 = 90%, Flex 30 = 70%); venda sem flex é Integral; não existe Flex 100', async () => {
+    const { admin, administradoraId, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    await vendedor(admin, { nome: 'Ana', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
+    expect(await prisma.modalidadeFlex.count({ where: { codigo: 'FLEX100' } })).toBe(0);
+    await importar(admin, administradoraId, csv([
+      { grupo: '7', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725', flex: 'FLEX 10' },
+      { grupo: '7', cota: '2', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725', flex: 'FLEX 30' },
+      { grupo: '7', cota: '3', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725', flex: '' },
+    ]));
+    const primeira = async (cota: string) => {
+      const c = await prisma.cota.findFirstOrThrow({ where: { grupo: '7', cota } });
+      return (await comissoesDa(c.id)).find((x) => x.destino === 'VENDEDOR' && x.parcela === 1)?.valor.toFixed(2);
+    };
+    // Iniciante Imóveis, 1ª parcela 0,50%
+    expect(await primeira('1')).toBe('450.00'); // 100.000 × 90% × 0,50%
+    expect(await primeira('2')).toBe('350.00'); // 100.000 × 70% × 0,50%
+    expect(await primeira('3')).toBe('500.00'); // sem flex = Integral: 100.000 × 100% × 0,50%
+  });
+
   it('categoria do documento: nova vigência, snapshot antigo intocado e trava contra reescrever venda apurada', async () => {
     const { admin, administradoraId, cat } = await preparar();
     const est = await estrutura(admin, 'A');

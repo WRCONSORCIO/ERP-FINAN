@@ -18,7 +18,7 @@ const PASSOS: Array<{ titulo: string; href: string; onde: string; texto: string 
 const TERMOS: Array<[string, string]> = [
   ['Cota / venda', 'Cada consórcio vendido (grupo/cota). Entra no sistema pela base de clientes.'],
   ['Crédito', 'Valor do bem do consórcio. É o que conta para a produção e para a meta de promoção.'],
-  ['Plano flex', 'Diminui o valor sobre o qual a comissão é calculada: Flex 50 = comissão sobre 50% do crédito.'],
+  ['Plano flex', 'Reduz o valor sobre o qual a comissão é calculada: Flex 10 = comissão sobre 90% do crédito, Flex 30 = sobre 70%. Venda sem flex = Integral (crédito cheio).'],
   ['Segmento', 'Tipo de bem (Imóveis, Móveis…). Cada segmento tem seus percentuais.'],
   ['Categoria', 'Nível do vendedor (Iniciante, Veterano, Expert). Define quem paga a comissão dele e se gera comissão para supervisor e gerente.'],
   ['Comissão prevista', 'Calculada, mas o cliente ainda não pagou a parcela.'],

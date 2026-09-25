@@ -184,7 +184,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
       {aba === 'comissoes' ? (
         <>
           <Aviso tom="azul" titulo="Como a comissão é calculada">
-            Crédito × % do plano flex × % da parcela. Exemplo: crédito de R$ 100.000, Flex 50 e 0,50% na 1ª parcela = R$ 100.000 × 50% × 0,50% = <strong>R$ 250,00</strong>.
+            Crédito × % da base do plano flex × % da parcela. Exemplo: crédito de R$ 100.000, Flex 30 (base de 70%) e 0,50% na 1ª parcela = R$ 100.000 × 70% × 0,50% = <strong>R$ 350,00</strong>. Sem flex (Integral), a base é o crédito cheio.
             A comissão de cada parcela é liberada quando o cliente paga aquela parcela. Parcela em branco não paga comissão.
           </Aviso>
           {d.segmentos.map((g) => {
@@ -481,7 +481,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
 
       {aba === 'flex' ? (
         <>
-          <Secao titulo="Planos flex" descricao="O flex diminui o valor sobre o qual a comissão é calculada: Flex 50 = a comissão é calculada sobre 50% do crédito. Não diminui a produção que conta para promoção. “Nomes no arquivo” = como o plano aparece na base de clientes." semPadding>
+          <Secao titulo="Planos flex" descricao="O flex reduz o valor sobre o qual a comissão é calculada: Flex 10 = comissão sobre 90% do crédito, Flex 30 = sobre 70%, e assim por diante. Venda sem flex no arquivo = Integral (crédito cheio). Não diminui a produção que conta para promoção. “Nomes no arquivo” = como o plano aparece na base de clientes." semPadding>
             <div className="tabela-quadro">
               <table className="tabela">
                 <thead><tr><th>Código</th><th>Nome</th><th className="direita">Comissão calculada sobre</th><th>Período</th><th>Nomes no arquivo</th>{editar ? <th>Ações</th> : null}</tr></thead>

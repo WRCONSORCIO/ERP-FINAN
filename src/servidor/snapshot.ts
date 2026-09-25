@@ -18,6 +18,9 @@ export interface SnapshotResolvido {
   snapGeraGerencia: boolean | null;
 }
 
+/** Modalidade usada quando a venda vem sem flex no arquivo. */
+export const CODIGO_FLEX_INTEGRAL = 'INTEGRAL';
+
 /** Casa o texto do arquivo com um cadastro por código ou alias normalizado. */
 export function casarPorAlias<T extends { codigo: string; nome: string; aliases: string[] }>(texto: string | null, lista: readonly T[]): T[] {
   const n = normalizarNome(texto);
@@ -41,7 +44,10 @@ export async function resolverSnapshot(db: Db, p: { vendedorId: string | null; d
   if (seg.length === 1) snap.snapSegmentoId = (seg[0] as (typeof segmentos)[number]).id;
 
   const flexVigentes = (await db.modalidadeFlex.findMany()).filter((f) => vigenteEm(p.dataVenda, f.vigenteDe, f.vigenteAte));
-  const flex = casarPorAlias(p.flexTexto, flexVigentes);
+  // Regra da WR: venda sem flex no arquivo é Integral (comissão sobre o crédito cheio).
+  const flex = normalizarNome(p.flexTexto) === ''
+    ? flexVigentes.filter((f) => f.codigo === CODIGO_FLEX_INTEGRAL)
+    : casarPorAlias(p.flexTexto, flexVigentes);
   if (flex.length === 1) snap.snapModalidadeFlexId = (flex[0] as (typeof flexVigentes)[number]).id;
 
   if (!p.vendedorId) return snap;

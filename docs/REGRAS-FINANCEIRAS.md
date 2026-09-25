@@ -5,7 +5,7 @@ Complementa a especificação (`docs/Especificacao-ERP-WR.pdf`). Cada item diz *
 ## 1. Comissão (especificação 6.4)
 
 ```
-base  = crédito × percentual flex            (arredondada a centavos, ROUND_HALF_UP)
+base  = crédito × % da base do flex         (Flex N = 100 − N %; sem flex = 100%; arredondada a centavos, ROUND_HALF_UP)
 valor = base × percentual da parcela no destino
 ```
 
@@ -53,7 +53,7 @@ Volume = soma do **crédito total** das vendas de todos os documentos da pessoa,
 
 | Tema | Decisão | Onde mudar |
 |---|---|---|
-| Flex | "Flex N" = base de N% do crédito (a especificação: "Flex 50 = base é 50%"); **Integral = 100%**. | Configurações › Flex |
+| Flex | **Regra da WR:** "Flex N" reduz a base em N% — Flex 10 = base de 90% do crédito, Flex 30 = 70% (Flex 50 = 50%, como na especificação). Não existe Flex 100. **Venda sem flex no arquivo = Integral** (100%, crédito cheio). A migration `20260925000003_flex_reduz_base` corrigiu a carga inicial onde nenhuma venda ainda usava o plano. | Configurações › Flex |
 | Data do cancelamento | Coluna de data de cancelamento da base, se existir. Senão, a data da importação que registrou o cancelamento — gravada em `origemDataCancelamento` e na memória do estorno. | Layout da base |
 | Situação cancelada | Situação que contém o trecho `CANCEL` (normalizado). | Importações › Layout |
 | Promoção | Conta a carteira completa, **inclusive canceladas** (texto literal da especificação). | `ConfiguracaoSistema: promocao.inclui_canceladas` |

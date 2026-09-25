@@ -10,7 +10,7 @@
  * para que comissões históricas já pagas fora do sistema não reapareçam como "a pagar".
  * Ajuste pela variável CARGA_VIGENCIA_INICIO (AAAA-MM-DD) antes de rodar o seed, se a WR decidir outra data.
  */
-export const VIGENCIA_INICIO_PADRAO = '2026-09-01';
+export const VIGENCIA_INICIO_PADRAO = '2024-11-01';
 
 export const ADMINISTRADORA = { codigo: 'SERVOPA', nome: 'SERVOPA' };
 

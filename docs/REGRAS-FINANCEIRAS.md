@@ -5,7 +5,7 @@ Complementa a especificação (`docs/Especificacao-ERP-WR.pdf`). Cada item diz *
 ## 1. Comissão (especificação 6.4)
 
 ```
-base  = crédito × percentual flex            (arredondada a centavos, ROUND_HALF_UP)
+base  = crédito × % da base do flex         (Flex N = 100 − N %; sem flex = 100%; arredondada a centavos, ROUND_HALF_UP)
 valor = base × percentual da parcela no destino
 ```
 
@@ -47,13 +47,15 @@ Volume = soma do **crédito total** das vendas de todos os documentos da pessoa,
 
 **Data passada.** Salvar uma regra com data de início encaixa a regra na linha do tempo: depois de uma vigência, encerra a anterior na véspera; antes de uma vigência, termina na véspera da seguinte; na mesma data de uma vigência ainda não usada, substitui. É recusado só quando tiraria a regra de um fato já calculado.
 
+**Valor só num intervalo (comissões).** Informando também a data final, o valor vale só naquele intervalo e o período que cobria a data continua depois dele, com os mesmos percentuais (a continuação é um período novo, auditado). Recusado se a data final passar por cima do período seguinte ou se mudar comissão já calculada.
+
 **Correção de cadastro.** Vigência que ainda **não foi usada em nenhum cálculo** (nenhuma comissão, estorno ou venda congelada aponta para ela) pode ser **corrigida** — valores e datas, inclusive para trás — ou **excluída**, em Configurações (tabelas de comissão, critério e percentuais de estorno, metas, flex; segmentos sem uso também). Ao excluir, a vigência anterior da mesma regra, que tinha sido encerrada por ela, volta a valer pelo período. Motivo obrigatório, auditoria com antes e depois, e as vendas em pendência voltam para a fila. Depois de usada, a vigência é imutável: a mudança é vigência nova. — `src/servidor/servicos/vigencias.ts`, teste em `tests/integration/vigencia.test.ts`.
 
 ## 6. Decisões técnicas tomadas na implementação
 
 | Tema | Decisão | Onde mudar |
 |---|---|---|
-| Flex | "Flex N" = base de N% do crédito (a especificação: "Flex 50 = base é 50%"); **Integral = 100%**. | Configurações › Flex |
+| Flex | **Regra da WR:** "Flex N" reduz a base em N% — Flex 10 = base de 90% do crédito, Flex 30 = 70% (Flex 50 = 50%, como na especificação). Não existe Flex 100. **Venda sem flex no arquivo = Integral** (100%, crédito cheio). A migration `20260925000003_flex_reduz_base` corrigiu a carga inicial onde nenhuma venda ainda usava o plano. | Configurações › Flex |
 | Data do cancelamento | Coluna de data de cancelamento da base, se existir. Senão, a data da importação que registrou o cancelamento — gravada em `origemDataCancelamento` e na memória do estorno. | Layout da base |
 | Situação cancelada | Situação que contém o trecho `CANCEL` (normalizado). | Importações › Layout |
 | Promoção | Conta a carteira completa, **inclusive canceladas** (texto literal da especificação). | `ConfiguracaoSistema: promocao.inclui_canceladas` |
@@ -67,7 +69,7 @@ Volume = soma do **crédito total** das vendas de todos os documentos da pessoa,
 
 1. **Escopo da base do estorno.** A especificação lista as três opções e não informa o padrão. A carga inicial deixa **indefinido**: estornos ficam em pendência (com aviso em Configurações) até alguém escolher em Configurações › Estornos. A escolha não reescreve nada, porque com o escopo indefinido nenhum estorno foi apurado.
 2. **Gerência para Veterano/Expert.** A especificação restringe a supervisão ("hoje, só iniciante"), mas não restringe a gerência. A carga inicial marca `geraGerencia = sim` nas três categorias. Se estiver errado, ajuste em Configurações › Categorias; vale para as vendas importadas depois.
-3. **Início da vigência da carga inicial** (`CARGA_VIGENCIA_INICIO`, padrão 01/09/2026). Vendas anteriores ficam em pendência `SEM_TABELA`, para que comissões históricas já pagas fora do sistema **não** reapareçam como "a pagar". Se a WR quiser apurar o histórico, abra vigências anteriores explícitas.
+3. **Início da carga inicial: 01/11/2024** (decisão da WR; `CARGA_VIGENCIA_INICIO`). A migration `20260925000004_carga_desde_nov_2024` moveu as regras da carga que ainda estavam em 01/09/2026 e não tinham sido usadas. Cada regra continua editável em Configurações › “Corrigir / excluir”. Vendas anteriores à data ficam em pendência `SEM_TABELA`.
 4. **Layout real dos arquivos.** Os nomes de coluna do CSV e as expressões dos PDFs (CV056E, CV069E e GC070A) foram escritos sem amostra real. São configuração editável na tela, mas precisam ser **validados com um arquivo real de cada tipo** antes da primeira folha.
 5. **Estorno na folha.** Descontar, cobrar à parte ou parcelar (seção 11, item 3). Hoje fica registrado como forma de cobrança, sem abatimento automático.
 6. **Layout de exportação para banco e contabilidade.** As exportações atuais são CSV (`;`, decimal com vírgula) e XLSX. Se o banco exigir um layout de remessa, ele precisa ser informado.

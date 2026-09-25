@@ -32,7 +32,7 @@ Para que a base sintética (vendas de setembro/2026) seja apurada, rode o seed c
 | `DIRECT_URL` | sim | Conexão direta (porta 5432), usada só por `prisma migrate deploy`. |
 | `AUTH_SECRET` | sim | Segredo do JWT de sessão, 32+ caracteres aleatórios (`openssl rand -base64 48`). |
 | `CRON_SECRET` | não | Protege `/cron/fila` (processamento agendado da fila de recálculo). Sem ele, a rota não existe. |
-| `CARGA_VIGENCIA_INICIO` | não | Só no seed: início da vigência da carga inicial (padrão `2026-09-01`). |
+| `CARGA_VIGENCIA_INICIO` | não | Só no seed: início da vigência da carga inicial (padrão `2024-11-01`). |
 | `ADMIN_EMAIL`, `ADMIN_NOME`, `ADMIN_SENHA` | não | Só no script do primeiro administrador. |
 
 Nunca commite `.env` nem `.env.test` (já estão no `.gitignore`).

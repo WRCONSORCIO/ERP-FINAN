@@ -10,7 +10,7 @@
  * para que comissões históricas já pagas fora do sistema não reapareçam como "a pagar".
  * Ajuste pela variável CARGA_VIGENCIA_INICIO (AAAA-MM-DD) antes de rodar o seed, se a WR decidir outra data.
  */
-export const VIGENCIA_INICIO_PADRAO = '2026-09-01';
+export const VIGENCIA_INICIO_PADRAO = '2024-11-01';
 
 export const ADMINISTRADORA = { codigo: 'SERVOPA', nome: 'SERVOPA' };
 
@@ -48,10 +48,13 @@ export const TABELAS_COMISSAO: Array<{ destino: 'VENDEDOR' | 'SUPERVISAO' | 'GER
   { destino: 'GERENCIA', categoria: null, segmento: 'MOVEIS', parcelas: { 1: '0.3' } },
 ];
 
-/** Onze modalidades (6.5): Flex 10 a Flex 100 e Integral. "Flex 50 = base é 50% do crédito." Integral = crédito cheio. */
+/**
+ * Flex (regra da WR): "Flex N" reduz a base em N% — Flex 10 = comissão sobre 90% do crédito,
+ * Flex 30 = 70%, e assim por diante. Não existe Flex 100. Venda sem flex = Integral (crédito cheio).
+ */
 export const MODALIDADES_FLEX = [
-  ...[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => ({ codigo: `FLEX${n}`, nome: `Flex ${n}`, percentual: String(n), aliases: [`FLEX ${n}`, `FLEX${n}`, `FLEX ${n}%`, `FLEX-${n}`] })),
-  { codigo: 'INTEGRAL', nome: 'Integral', percentual: '100', aliases: ['INTEGRAL'] },
+  ...[10, 20, 30, 40, 50, 60, 70, 80, 90].map((n) => ({ codigo: `FLEX${n}`, nome: `Flex ${n}`, percentual: String(100 - n), aliases: [`FLEX ${n}`, `FLEX${n}`, `FLEX ${n}%`, `FLEX-${n}`] })),
+  { codigo: 'INTEGRAL', nome: 'Integral (sem flex)', percentual: '100', aliases: ['INTEGRAL', 'SEM FLEX'] },
 ];
 
 /**

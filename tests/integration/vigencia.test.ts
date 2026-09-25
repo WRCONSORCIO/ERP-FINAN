@@ -13,7 +13,7 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     await importar(admin, administradoraId, csv([{ grupo: '1', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725' }]));
 
     const seg = await prisma.segmento.findFirstOrThrow({ where: { codigo: 'IMOVEIS' } });
-    const entrada = { destino: 'VENDEDOR' as const, segmentoId: seg.id, categoriaId: cat.INICIANTE, titularVendedorId: null, titularPessoaId: null, observacao: null,
+    const entrada = { destino: 'VENDEDOR' as const, segmentoId: seg.id, categoriaId: cat.INICIANTE, titularVendedorId: null, titularPessoaId: null, observacao: null, vigenteAte: null,
       p1: '1', p2: null, p3: null, p4: null, p5: null, p6: null, p7: null, p8: null, p9: null, p10: null, p11: null, p12: null };
     // Não pode começar numa data em que já existe venda apurada com a tabela atual
     await expect(abrirVigenciaTabela(admin, { ...entrada, vigenteDe: D('2026-09-05') })).rejects.toThrow(/já foi apurada/);
@@ -148,6 +148,55 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
       { grupo: '6', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
     ]));
     expect((await prisma.estorno.findFirstOrThrow({ where: { destino: 'VENDEDOR' } })).percentual.toFixed(2)).toBe('50.00');
+  });
+
+  it('flex reduz a base (Flex 10 = 90%, Flex 30 = 70%); venda sem flex é Integral; não existe Flex 100', async () => {
+    const { admin, administradoraId, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    await vendedor(admin, { nome: 'Ana', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
+    expect(await prisma.modalidadeFlex.count({ where: { codigo: 'FLEX100' } })).toBe(0);
+    await importar(admin, administradoraId, csv([
+      { grupo: '7', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725', flex: 'FLEX 10' },
+      { grupo: '7', cota: '2', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725', flex: 'FLEX 30' },
+      { grupo: '7', cota: '3', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725', flex: '' },
+    ]));
+    const primeira = async (cota: string) => {
+      const c = await prisma.cota.findFirstOrThrow({ where: { grupo: '7', cota } });
+      return (await comissoesDa(c.id)).find((x) => x.destino === 'VENDEDOR' && x.parcela === 1)?.valor.toFixed(2);
+    };
+    // Iniciante Imóveis, 1ª parcela 0,50%
+    expect(await primeira('1')).toBe('450.00'); // 100.000 × 90% × 0,50%
+    expect(await primeira('2')).toBe('350.00'); // 100.000 × 70% × 0,50%
+    expect(await primeira('3')).toBe('500.00'); // sem flex = Integral: 100.000 × 100% × 0,50%
+  });
+
+  it('valor diferente só num intervalo passado: grava o intervalo e o valor anterior continua depois', async () => {
+    const { admin, administradoraId, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    await vendedor(admin, { nome: 'Ana', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId, desde: '2025-01-01' });
+    const seg = await prisma.segmento.findFirstOrThrow({ where: { codigo: 'IMOVEIS' } });
+    const atual = await prisma.tabelaComissao.findFirstOrThrow({ where: { categoriaId: cat.INICIANTE, segmentoId: seg.id } });
+    await prisma.modalidadeFlex.updateMany({ data: { vigenteDe: D('2025-01-01') } }); // flex também desde 2025
+    // Carga começa em 01/01/2026 nos testes: move para 01/01/2025 e registra 0,40% só de 01/02/2025 a 31/03/2025
+    const { corrigirTabela } = await import('@/servidor/servicos/vigencias');
+    await corrigirTabela(admin, { id: atual.id, vigenteDe: D('2025-01-01'), vigenteAte: null, motivo: 'regra desde 2025', observacao: null,
+      p1: '0.5', p2: '0.4', p3: '0.3', p4: '0.3', p5: null, p6: null, p7: null, p8: null, p9: null, p10: null, p11: null, p12: null });
+    await abrirVigenciaTabela(admin, { destino: 'VENDEDOR', segmentoId: seg.id, categoriaId: cat.INICIANTE, titularVendedorId: null, titularPessoaId: null, observacao: null,
+      vigenteDe: D('2025-02-01'), vigenteAte: D('2025-03-31'), p1: '0.4', p2: null, p3: null, p4: null, p5: null, p6: null, p7: null, p8: null, p9: null, p10: null, p11: null, p12: null });
+    const periodos = await prisma.tabelaComissao.findMany({ where: { categoriaId: cat.INICIANTE, segmentoId: seg.id }, orderBy: { vigenteDe: 'asc' }, include: { faixas: true } });
+    expect(periodos.map((t) => [t.vigenteDe.toISOString().slice(0, 10), t.vigenteAte?.toISOString().slice(0, 10) ?? null, t.faixas.length])).toEqual([
+      ['2025-01-01', '2025-01-31', 4], ['2025-02-01', '2025-03-31', 1], ['2025-04-01', null, 4],
+    ]);
+    await importar(admin, administradoraId, csv([
+      { grupo: '8', cota: '1', credito: '100.000,00', venda: '15/03/2025', pagas: 1, docVendedor: '52998224725' },
+      { grupo: '8', cota: '2', credito: '100.000,00', venda: '15/05/2025', pagas: 1, docVendedor: '52998224725' },
+    ]));
+    const primeira = async (cota: string) => {
+      const c = await prisma.cota.findFirstOrThrow({ where: { grupo: '8', cota } });
+      return (await comissoesDa(c.id)).find((x) => x.destino === 'VENDEDOR' && x.parcela === 1)?.valor.toFixed(2);
+    };
+    expect(await primeira('1')).toBe('200.00'); // Flex 50: 50.000 × 0,40%
+    expect(await primeira('2')).toBe('250.00'); // 50.000 × 0,50%
   });
 
   it('categoria do documento: nova vigência, snapshot antigo intocado e trava contra reescrever venda apurada', async () => {

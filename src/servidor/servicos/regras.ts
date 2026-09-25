@@ -14,7 +14,7 @@ import { exigir, type Sessao } from '../contexto';
 import { enfileirarApuracao } from '../fila';
 import { paraJson } from '../json';
 import { usoDaVigencia, type EntidadeVigencia } from './vigencias';
-import { zBooleano, zData, zId, zIdOpcional, zMoeda, zMotivo, zPercentual, zTexto, zTextoOpcional } from './esquemas';
+import { zBooleano, zData, zDataOpcional, zId, zIdOpcional, zMoeda, zMotivo, zPercentual, zTexto, zTextoOpcional } from './esquemas';
 
 // ------------------------------------------------------------------ Categorias
 
@@ -137,6 +137,8 @@ export const esquemaTabela = z.object({
   titularVendedorId: zIdOpcional,
   titularPessoaId: zIdOpcional,
   vigenteDe: zData,
+  /** Opcional: o valor vale só até esta data; depois volta o valor que valia antes. */
+  vigenteAte: zDataOpcional,
   observacao: zTextoOpcional(300),
   p1: zFaixaOpcional, p2: zFaixaOpcional, p3: zFaixaOpcional, p4: zFaixaOpcional, p5: zFaixaOpcional, p6: zFaixaOpcional,
   p7: zFaixaOpcional, p8: zFaixaOpcional, p9: zFaixaOpcional, p10: zFaixaOpcional, p11: zFaixaOpcional, p12: zFaixaOpcional,
@@ -169,9 +171,13 @@ export async function abrirVigenciaTabela(s: Sessao, d: EntradaTabela) {
   exigir(s, 'regras', 'editar');
   validarChaveTabela(d);
   const faixas = faixasDaEntrada(d);
+  if (d.vigenteAte && d.vigenteAte < d.vigenteDe) throw new ErroDeDominio('A data final não pode ser anterior à data inicial.');
   return prisma.$transaction(async (tx) => {
     const lista = await tx.tabelaComissao.findMany({ where: chaveTabelaWhere(d), include: { faixas: true } });
-    const { anterior: atual, encerrada, vigenteAte } = await abrirVigencia({
+    // Período que cobre a data de início (se houver): com data final, ele continua depois dela.
+    const cobre = lista.find((t) => t.vigenteDe <= d.vigenteDe && (t.vigenteAte === null || t.vigenteAte >= d.vigenteDe)) ?? null;
+    const fimOriginal = cobre?.vigenteAte ?? null;
+    const { anterior: atual, encerrada, vigenteAte: fimCalculado } = await abrirVigencia({
       entidade: 'TABELA', tx, lista, vigenteDe: d.vigenteDe,
       excluir: async (id) => { await tx.faixaComissao.deleteMany({ where: { tabelaId: id } }); await tx.tabelaComissao.delete({ where: { id } }); },
       conflito: async (a) => {
@@ -183,6 +189,28 @@ export async function abrirVigenciaTabela(s: Sessao, d: EntradaTabela) {
       },
       encerrar: (id, ate) => tx.tabelaComissao.update({ where: { id }, data: { vigenteAte: ate } }),
     });
+    let vigenteAte = fimCalculado;
+    if (d.vigenteAte) {
+      if (fimCalculado && d.vigenteAte > fimCalculado) {
+        throw new ErroDeDominio(`A data final passaria por cima do período seguinte, que começa em ${formatarData(somarDias(fimCalculado, 1))}.`);
+      }
+      vigenteAte = d.vigenteAte;
+      // O período que cobria a data volta a valer depois da data final, com os mesmos percentuais.
+      if (cobre && (fimOriginal === null || fimOriginal > d.vigenteAte)) {
+        const continuacao = await tx.tabelaComissao.create({
+          data: {
+            destino: cobre.destino, segmentoId: cobre.segmentoId, categoriaId: cobre.categoriaId, titularVendedorId: cobre.titularVendedorId, titularPessoaId: cobre.titularPessoaId,
+            vigenteDe: somarDias(d.vigenteAte, 1), vigenteAte: fimOriginal, observacao: cobre.observacao, criadoPorId: s.usuarioId,
+            faixas: { create: cobre.faixas.map((f) => ({ parcela: f.parcela, percentual: f.percentual })) },
+          },
+        });
+        await auditar(tx, {
+          sessao: s, acao: 'ALTERACAO_REGRA', entidade: 'TabelaComissao', entidadeId: continuacao.id,
+          depois: { vigenteDe: continuacao.vigenteDe, vigenteAte: continuacao.vigenteAte, faixas: cobre.faixas.map((f) => ({ parcela: f.parcela, percentual: f.percentual })) },
+          contexto: { operacao: 'continuação do período anterior depois de um intervalo com outro valor', periodoOriginal: cobre.id },
+        });
+      }
+    }
     const nova = await tx.tabelaComissao.create({
       data: {
         destino: d.destino, segmentoId: d.segmentoId, categoriaId: d.categoriaId, titularVendedorId: d.titularVendedorId, titularPessoaId: d.titularPessoaId,

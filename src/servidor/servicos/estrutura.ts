@@ -156,7 +156,7 @@ export async function definirResponsavel(s: Sessao, d: z.infer<typeof esquemaRes
     await auditar(tx, {
       sessao: s, acao: 'ALTERACAO', entidade: 'ResponsavelUnidade', entidadeId: novo.id,
       antes: atual ? { ...atual, vigenteAte: plano.encerrarAnteriorEm } : null, depois: novo,
-      contexto: { observacao: 'Vendas já importadas mantêm o responsável congelado; use Recongelar para as que estão sem responsável.' },
+      contexto: { observacao: 'Vendas já calculadas mantêm o responsável da época; as que estavam sem responsável são resolvidas em Processar pendências.' },
     });
     return novo;
   });

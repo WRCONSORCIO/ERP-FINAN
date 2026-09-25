@@ -95,7 +95,7 @@ A carteira vem **só** da base de clientes. Os quatro arquivos são reconhecidos
 | CV069E | PDF | marcador `CV069E` no texto |
 | GC070A | PDF | marcador `GC070A` no texto |
 
-Fluxo: **Enviar e ler** (guarda linhas e erros, confere contra o total do rodapé) → **Aplicar pendentes** (lotes retomáveis) → **Apurar tudo** (fila de recálculo). Reimportar é inofensivo (hash de conteúdo por linha).
+Fluxo: **Enviar e processar** lê o arquivo (guarda linhas e erros, confere contra o total do rodapé) e em seguida roda, em lotes retomáveis, as três etapas: gravar as vendas, conferir o cadastro das vendas pendentes e calcular (fila de recálculo). **Processar pendências agora** roda as mesmas etapas sem arquivo, depois de um ajuste de cadastro. Reimportar é inofensivo (hash de conteúdo por linha).
 
 > **Importante antes da produção:** os nomes de coluna do CSV e as expressões de leitura dos PDFs são **configuração** (Importações › Layout dos arquivos). A carga inicial foi escrita sem amostras reais dos arquivos da administradora; valide com um arquivo real de cada tipo e ajuste o layout na tela, se necessário. A conferência contra o total do rodapé denuncia qualquer linha não reconhecida.
 
@@ -103,7 +103,7 @@ Fluxo: **Enviar e ler** (guarda linhas e erros, confere contra o total do rodap�
 
 1. Crie o projeto na Supabase (PostgreSQL 16). A extensão `btree_gist` é criada pela migration.
 2. Na Vercel, importe o repositório e configure `DATABASE_URL` (pooler), `DIRECT_URL` (direta), `AUTH_SECRET` e, opcionalmente, `CRON_SECRET`.
-3. O `vercel.json` roda `prisma migrate deploy && npm run build` no build (região `gru1`) e agenda `/cron/fila` uma vez por dia, às 06h de Brasília (09h UTC) — limite do plano Hobby da Vercel. No plano Pro dá para usar `0 * * * *` (de hora em hora). Em qualquer plano, o botão "Apurar tudo" em Importações processa a fila na hora.
+3. O `vercel.json` roda `prisma migrate deploy && npm run build` no build (região `gru1`) e agenda `/cron/fila` uma vez por dia, às 06h de Brasília (09h UTC) — limite do plano Hobby da Vercel. No plano Pro dá para usar `0 * * * *` (de hora em hora). Em qualquer plano, o botão "Processar pendências agora" em Importações processa a fila na hora.
 4. Depois do primeiro deploy, aplique a carga inicial e crie o primeiro administrador. Sem instalar nada: abra `scripts/sql/implantacao-supabase.sql`, troque nome, e-mail e senha no fim do arquivo e rode no **Supabase › SQL Editor** (roda uma vez; se já houver carga, para sem alterar nada). Alternativa pelo terminal, com as variáveis apontando para produção, rodando **uma vez**: `npm run db:seed` (defina `CARGA_VIGENCIA_INICIO` conforme a decisão da WR) e `npm run db:criar-admin`.
 5. Nunca aponte `.env.test` para o banco de produção: a suíte de integração apaga tabelas (e se recusa a rodar sem "test" no nome do banco).
 

@@ -34,11 +34,11 @@ export default async function Bonus({ searchParams }: { searchParams: Promise<Pa
       <div className="grid gap-3 sm:grid-cols-3">
         <Cartao destaque rotulo="Bônus recebido" valor={<Dinheiro valor={d.recebido} />} detalhe={`${d.quantidade} evento(s)`} />
         <Cartao rotulo="Atribuído a uma gerência" valor={<Dinheiro valor={d.atribuido} />} tom="verde" />
-        <Cartao rotulo="Sem vínculo com a carteira" valor={<Dinheiro valor={d.semVinculo.valor} />} tom={d.semVinculo.quantidade > 0 ? 'ambar' : 'verde'} detalhe={<Link href={`/bonus${queryDe(sp, { semVinculo: semVinculo ? null : '1', pagina: null })}`}>{semVinculo ? 'mostrar todos' : `${d.semVinculo.quantidade} evento(s) — ver só estes`}</Link>} />
+        <Cartao rotulo="Sem venda identificada" valor={<Dinheiro valor={d.semVinculo.valor} />} tom={d.semVinculo.quantidade > 0 ? 'ambar' : 'verde'} detalhe={<Link href={`/bonus${queryDe(sp, { semVinculo: semVinculo ? null : '1', pagina: null })}`}>{semVinculo ? 'mostrar todos' : `${d.semVinculo.quantidade} evento(s) — ver só estes`}</Link>} />
       </div>
       {pode(s.perfil, 'bonus', 'editar') && d.semVinculo.quantidade > 0 ? (
-        <Secao titulo="Reconciliar com a carteira" descricao="Tenta ligar os bônus sem venda identificada às vendas que chegaram depois. A ligação encontrada fica registrada.">
-          <FormularioAcao acao={reconciliarBonusAcao} rotulo="Reconciliar agora" />
+        <Secao titulo="Ligar bônus às vendas" descricao="Tenta ligar os bônus sem venda identificada às vendas que chegaram depois. A ligação encontrada fica registrada.">
+          <FormularioAcao acao={reconciliarBonusAcao} rotulo="Ligar agora" />
         </Secao>
       ) : null}
       <Secao titulo="Origem por gerência" semPadding>

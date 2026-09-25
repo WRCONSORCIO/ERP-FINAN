@@ -148,17 +148,17 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                                 <Campo rotulo="Motivo" nome="motivo"><input name="motivo" className="campo" required /></Campo>
                               </FormularioAcao>
                             </div>
-                          </details>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <FormularioAcao acao={ativoCategoriaAcao} rotulo={c.ativo ? 'Desativar' : 'Reativar'} perigo={c.ativo} confirmacao={c.ativo ? 'Deixa de aparecer nos cadastros novos. O histórico fica.' : 'Volta a aparecer nos cadastros.'}>
-                              <input type="hidden" name="id" value={c.id} />{c.ativo ? null : <input type="hidden" name="ativo" value="true" />}
-                            </FormularioAcao>
-                            {(d.usos.get(c.id) ?? 0) === 0 ? (
-                              <FormularioAcao acao={excluirCategoriaAcao} rotulo="Excluir" perigo confirmacao="Nenhum vendedor ou venda usa esta categoria. Ela será excluída.">
-                                <input type="hidden" name="id" value={c.id} />
+                            <div className="mt-3 flex flex-wrap gap-2 border-t border-wr-borda pt-3">
+                              <FormularioAcao acao={ativoCategoriaAcao} rotulo={c.ativo ? 'Desativar' : 'Reativar'} perigo={c.ativo} confirmacao={c.ativo ? 'Deixa de aparecer nos cadastros novos. O histórico fica.' : 'Volta a aparecer nos cadastros.'}>
+                                <input type="hidden" name="id" value={c.id} />{c.ativo ? null : <input type="hidden" name="ativo" value="true" />}
                               </FormularioAcao>
-                            ) : null}
-                          </div>
+                              {(d.usos.get(c.id) ?? 0) === 0 ? (
+                                <FormularioAcao acao={excluirCategoriaAcao} rotulo="Excluir" perigo confirmacao="Nenhum vendedor ou venda usa esta categoria. Ela será excluída.">
+                                  <input type="hidden" name="id" value={c.id} />
+                                </FormularioAcao>
+                              ) : null}
+                            </div>
+                          </details>
                         </td>
                       ) : null}
                     </tr>

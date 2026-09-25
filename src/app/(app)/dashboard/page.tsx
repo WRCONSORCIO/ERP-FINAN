@@ -49,25 +49,25 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   return (
     <Pagina
       titulo="Dashboard"
-      descricao={<>Como estamos neste período? <strong>{periodo.rotulo}</strong>. Valores respeitam o seu recorte de visibilidade.</>}
+      descricao={<>Como estamos neste período? <strong>{periodo.rotulo}</strong>. Você vê só as equipes que tem permissão de ver.</>}
       acoes={<><Suspense><SeletorDePeriodo /></Suspense><FormularioPeriodoLivre periodo={periodo} /></>}
     >
       <p className="rotulo">Vendas do período</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Cartao destaque rotulo="Produção" valor={<Dinheiro valor={d.atual.producao} />} detalhe={`${d.atual.cotas} cota(s) vendida(s) · crédito total`} />
-        <Cartao rotulo="Comissão prevista" valor={<Dinheiro valor={d.atual.comissaoPrevista} />} tom="azul" detalhe="O que a WR pagará pelas vendas do período (paga pela WR)" />
-        <Cartao rotulo="Já liberado" valor={<Dinheiro valor={d.liberado} />} tom="azul" detalhe="Comissão liberada no período (parcela paga pelo cliente)" href="/a-pagar" />
+        <Cartao rotulo="Comissão prevista" valor={<Dinheiro valor={d.atual.comissaoPrevista} />} tom="azul" detalhe="O que a WR vai pagar pelas vendas do período" />
+        <Cartao rotulo="Já liberado" valor={<Dinheiro valor={d.liberado} />} tom="azul" detalhe="Comissão liberada no período (o cliente pagou a parcela)" href="/a-pagar" />
         <Cartao rotulo="Cancelamentos" valor={d.cancelamentos.quantidade} tom={d.cancelamentos.quantidade > 0 ? 'vermelho' : 'verde'} detalhe={<>crédito cancelado <Dinheiro valor={d.cancelamentos.credito} /></>} href="/estornos" />
       </div>
       <p className="rotulo">Cobranças e pendências</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <Cartao rotulo="Estorno a cobrar" valor={<Dinheiro valor={d.estornoACobrar.valor} />} tom={d.estornoACobrar.valor.isZero() ? 'verde' : 'ambar'} detalhe={`${d.estornoACobrar.quantidade} estorno(s) a cobrar ou em cobrança`} href="/estornos" />
-        <Cartao rotulo="Pendências de cadastro" valor={d.pendenciasCadastro} tom={d.pendenciasCadastro > 0 ? 'ambar' : 'verde'} detalhe="Vendas sem vendedor, categoria ou estrutura: não geram comissão" href="/importacoes#diagnostico" />
+        <Cartao rotulo="Vendas sem comissão" valor={d.pendenciasCadastro} tom={d.pendenciasCadastro > 0 ? 'ambar' : 'verde'} detalhe="Falta cadastro (vendedor, categoria ou equipe). Veja como resolver em Importações" href="/importacoes#diagnostico" />
         <Cartao rotulo="Carteira ativa" valor={d.carteiraAtiva.quantidade.toLocaleString('pt-BR')} tom="verde" detalhe={<>cotas não canceladas · <Dinheiro valor={d.carteiraAtiva.credito} /> (não depende do período)</>} href="/clientes" />
       </div>
 
       {c ? (
-        <Secao titulo="Comparativos" descricao="Cada bloco indica o próprio período; nada é misturado.">
+        <Secao titulo="Comparativos" descricao="Comparação com outros períodos.">
           <div className="grid gap-3 sm:grid-cols-3">
             <Comparativo titulo={`Mês anterior · ${rotuloMesLongo(deslocarCompetencia(periodo.competencia as string, -1))}`} r={c.anterior} atual={d.atual} />
             <Comparativo titulo={`Mesmo mês do ano anterior · ${rotuloMesLongo(deslocarCompetencia(periodo.competencia as string, -12))}`} r={c.anoAnterior} atual={d.atual} />

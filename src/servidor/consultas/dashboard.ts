@@ -43,7 +43,7 @@ export async function painel(s: Sessao, p: Periodo) {
   const tabela = porGerencia
     .map((g) => ({
       gerenciaId: g.snapGerenciaId,
-      nome: gerencias.find((x) => x.id === g.snapGerenciaId)?.nome ?? 'Sem gerência (venda sem estrutura)',
+      nome: gerencias.find((x) => x.id === g.snapGerenciaId)?.nome ?? 'Sem gerência (vendedor sem equipe)',
       cotas: g._count,
       producao: dec(g._sum.credito ?? 0),
       comissao: dec(comissaoPorGerencia.find((c) => c.gerenciaId === g.snapGerenciaId)?.valor ?? 0),

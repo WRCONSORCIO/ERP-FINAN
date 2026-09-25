@@ -46,9 +46,6 @@ export async function simularTabelaAcao(_: Resultado<R.ResultadoSimulacao> | nul
 export async function abrirConfigEstornoAcao(_: Estado, fd: FormData) {
   return executar('regras', 'editar', R.esquemaConfigEstorno, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaConfigEstorno(s, d); return { mensagem: 'Regras de estorno salvas.' }; });
 }
-export async function definirEscopoAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaDefinirEscopo, formParaObjeto(fd), async (s, d) => { await R.definirEscopoBase(s, d); return { mensagem: 'Escopo definido. As vendas canceladas pendentes foram para a fila de apuração.' }; });
-}
 /** "Para quem" é um único campo na tela: PADRAO, código de categoria/SUPERVISAO/GERENCIA ou v:<id do vendedor>. */
 function comParaQuem(fd: FormData): Record<string, unknown> {
   const o = formParaObjeto(fd);

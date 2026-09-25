@@ -9,7 +9,6 @@ import { prisma } from '@/lib/db';
 import { recongelarPendentes } from '@/servidor/servicos/cotas';
 import { esquemaLayoutPdf, salvarLayoutCarteira, salvarLayoutPdf } from '@/servidor/servicos/regras';
 import { ROTULO_TIPO_ARQUIVO } from '@/dominio/importacao/deteccao';
-import type { ProgressoLote } from '@/ui/processo-em-lotes';
 import type { EtapaProcessamento, ProgressoEtapa } from '@/ui/processar-tudo';
 
 type Estado = Resultado<unknown> | null;
@@ -26,42 +25,10 @@ export async function receberArquivoAcao(_: Estado, fd: FormData) {
     };
   });
 }
-
-/** Aplica o próximo lote da importação pendente mais antiga (ordem de envio preservada). */
-export async function aplicarPendentesAcao(): Promise<Resultado<ProgressoLote>> {
-  return executar('importacoes', 'editar', z.undefined(), undefined, async (s) => {
-    const proxima = await prisma.importacao.findFirst({ where: { status: { in: ['RECEBIDA', 'APLICANDO'] } }, orderBy: { enviadoEm: 'asc' } });
-    if (!proxima) return { mensagem: 'Nada a aplicar.', dados: { processadas: 0, restantes: 0, concluida: true } };
-    const r = await aplicarLote(s, proxima.id);
-    const restantes = await prisma.linhaDeImportacao.count({ where: { status: 'PENDENTE' } });
-    return {
-      mensagem: restantes === 0 ? 'Importações aplicadas. Agora rode a fila de recálculo (Apurar tudo).' : 'Lote aplicado.',
-      dados: { processadas: r.processadas, restantes, concluida: restantes === 0 },
-    };
-  });
-}
-
-export async function apurarFilaAcao(): Promise<Resultado<ProgressoLote>> {
-  return executar('importacoes', 'editar', z.undefined(), undefined, async () => {
-    const r = await processarFila(100);
-    return {
-      mensagem: r.falhas > 0 ? `Lote apurado com ${r.falhas} falha(s) — ficam agendadas para nova tentativa.` : r.restantes === 0 ? 'Fila de recálculo vazia.' : 'Lote apurado.',
-      dados: { processadas: r.processados, restantes: r.restantes, concluida: r.restantes === 0 || r.processados === 0 },
-    };
-  });
-}
-
 export async function reprocessarErrosAcao(_: Estado, _fd: FormData) {
   return executar('importacoes', 'editar', z.object({}), {}, async () => {
     const n = await reprocessarErros(prisma);
     return { mensagem: `${n} pedido(s) de apuração recolocado(s) na fila.` };
-  });
-}
-
-export async function recongelarTodasAcao(): Promise<Resultado<ProgressoLote>> {
-  return executar('importacoes', 'editar', z.undefined(), undefined, async (s) => {
-    const r = await recongelarPendentes(s, 150);
-    return { mensagem: r.restantes === 0 ? `Recongelamento concluído. ${r.alteradas} venda(s) mudaram e foram para a fila de apuração.` : 'Lote recongelado.', dados: { processadas: r.processadas, restantes: r.restantes, concluida: r.restantes === 0 || r.processadas === 0 } };
   });
 }
 

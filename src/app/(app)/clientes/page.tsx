@@ -18,7 +18,7 @@ export default async function Carteira({ searchParams }: { searchParams: Promise
   return (
     <Pagina
       titulo="Carteira"
-      descricao="A tela de procurar venda. A carteira vem exclusivamente da importação da base de clientes — não existe cadastro manual de cota, e venda cancelada continua aqui."
+      descricao="Todas as vendas, para procurar e consultar. As vendas entram pela base de clientes enviada em Importações; as canceladas continuam aqui."
       acoes={<LinkBotao href={`/exportar/carteira${queryDe(sp, { pagina: null })}`} icone="download" download>Exportar CSV/XLSX</LinkBotao>}
     >
       <form method="get" className="cartao grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8" role="search">

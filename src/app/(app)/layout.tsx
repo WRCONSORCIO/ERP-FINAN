@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic';
 
 const MENU: Array<{ href: string; rotulo: string; icone: NomeIcone; grupo: string; recurso: Recurso }> = [
   { href: '/dashboard', rotulo: 'Dashboard', icone: 'dashboard', grupo: 'Visão geral', recurso: 'dashboard' },
+  { href: '/ajuda', rotulo: 'Como usar', icone: 'info', grupo: 'Visão geral', recurso: 'dashboard' },
   { href: '/vendedores', rotulo: 'Vendedores', icone: 'vendedores', grupo: 'Comercial', recurso: 'vendedores' },
   { href: '/estrutura', rotulo: 'Estrutura', icone: 'estrutura', grupo: 'Comercial', recurso: 'equipes' },
   { href: '/clientes', rotulo: 'Carteira', icone: 'clientes', grupo: 'Carteira', recurso: 'cotas' },

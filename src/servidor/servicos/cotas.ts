@@ -79,7 +79,7 @@ export async function recongelarCota(s: Sessao, d: z.infer<typeof esquemaReconge
   });
 }
 
-/** "Recongelar todas": só as vendas com pendência de cadastro/estrutura, em lotes (retomável). */
+/** Etapa "conferir cadastro" do processamento: só as vendas com pendência de cadastro/estrutura, em lotes (retomável). */
 /**
  * `depoisDe` (cursor por cotaId) permite percorrer todas uma vez só: vendas que continuam sem cadastro
  * continuam pendentes e não fazem o processamento girar em falso.

@@ -31,7 +31,7 @@ const ABAS = [
 
 function Vig({ de, ate }: { de: Date; ate: Date | null }) {
   const d = hoje();
-  return <span className="whitespace-nowrap"><DataCurta valor={de} /> → {ate ? <DataCurta valor={ate} /> : 'hoje'} {vigenteEm(d, de, ate) ? <Etiqueta tom="verde">em vigor</Etiqueta> : de > d ? <Etiqueta tom="ambar">futura</Etiqueta> : <Etiqueta>encerrada</Etiqueta>}</span>;
+  return <span className="whitespace-nowrap"><DataCurta valor={de} /> → {ate ? <DataCurta valor={ate} /> : 'em diante'} {vigenteEm(d, de, ate) ? <Etiqueta tom="verde">em vigor</Etiqueta> : de > d ? <Etiqueta tom="ambar">futura</Etiqueta> : <Etiqueta>encerrada</Etiqueta>}</span>;
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : '');
@@ -64,6 +64,72 @@ function AcoesVigencia({ entidade, id, uso, de, ate, corrigir, children }: {
             <input name="motivo" aria-label="Motivo da exclusão" placeholder="Motivo da exclusão" className="campo w-56" required minLength={3} />
           </FormularioAcao>
         </div>
+      </div>
+    </details>
+  );
+}
+
+type LinhaTabela = {
+  id: string; destino: string; segmentoId: string; categoriaId: string | null; titularVendedorId: string | null; titularPessoaId: string | null;
+  vigenteDe: Date; vigenteAte: Date | null; observacao: string | null; faixas: Array<{ parcela: number; percentual: { toString(): string } }>;
+};
+
+function CamposParcelas({ faixas, prefixo }: { faixas: LinhaTabela['faixas']; prefixo: string }) {
+  return (
+    <fieldset>
+      <legend className="rotulo mb-1">% em cada parcela (em branco = não paga)</legend>
+      <div className="grid grid-cols-4 gap-1 sm:grid-cols-6">
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+          <label key={n} className="text-[11px] text-wr-texto-3">{n}ª<input name={`p${n}`} aria-label={`${prefixo} ${n}ª parcela`} inputMode="decimal" placeholder="—" defaultValue={faixas.find((f) => f.parcela === n)?.percentual.toString() ?? ''} className="campo numero mt-0.5" /></label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Editar uma linha de comissão: corrigir o período (se ainda não usado) ou registrar outro valor em outra data. */
+function EditarLinhaTabela({ t, uso }: { t: LinhaTabela; uso: number }) {
+  const quem = t.destino === 'VENDEDOR' ? `V:${t.categoriaId ?? ''}` : t.destino;
+  const soPara = t.titularVendedorId ? `v:${t.titularVendedorId}` : t.titularPessoaId ? `p:${t.titularPessoaId}` : '';
+  return (
+    <details>
+      <summary className="cursor-pointer text-[12px] font-semibold text-wr-verde">Editar</summary>
+      <div className="mt-2 min-w-[340px] space-y-4 rounded border border-wr-borda bg-wr-fundo p-3 text-[13px]">
+        <div>
+          <p className="mb-2 font-semibold">1. Corrigir este período ({iso(t.vigenteDe).split('-').reverse().join('/')} {t.vigenteAte ? `até ${iso(t.vigenteAte).split('-').reverse().join('/')}` : 'em diante'})</p>
+          {uso > 0 ? <p className="text-wr-texto-3">Já foi usado em {uso} cálculo(s) e não pode ser corrigido. Use a opção 2 com a data da mudança.</p> : (
+            <FormularioAcao acao={corrigirTabelaAcao} rotulo="Salvar correção" confirmacao="Nenhum cálculo usou este período ainda, então nada já calculado muda. Fica registrado na auditoria.">
+              <input type="hidden" name="id" value={t.id} />
+              <CamposParcelas faixas={t.faixas} prefixo="Corrigir" />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Campo rotulo="Vale a partir de" nome={`cde-${t.id}`}><input id={`cde-${t.id}`} name="vigenteDe" type="date" defaultValue={iso(t.vigenteDe)} className="campo" required /></Campo>
+                <Campo rotulo="Vale até (vazio = sem fim)" nome={`cate-${t.id}`}><input id={`cate-${t.id}`} name="vigenteAte" type="date" defaultValue={iso(t.vigenteAte)} className="campo" /></Campo>
+              </div>
+              <input type="hidden" name="observacao" value={t.observacao ?? ''} />
+              <Campo rotulo="Motivo" nome={`cmot-${t.id}`}><input id={`cmot-${t.id}`} name="motivo" className="campo" required minLength={3} /></Campo>
+            </FormularioAcao>
+          )}
+        </div>
+        <div className="border-t border-wr-borda pt-3">
+          <p className="mb-1 font-semibold">2. Registrar outro valor a partir de outra data</p>
+          <p className="mb-2 text-[12px] text-wr-texto-2">Para quando o valor era diferente no passado (ex.: de fev a mar/2025 era 0,40%) ou vai mudar. Informe desde quando vale e, se foi só um intervalo, até quando. O sistema encaixa na linha do tempo.</p>
+          <FormularioAcao acao={abrirTabelaAcao} rotulo="Salvar" confirmacao="O valor vale a partir da data informada. Vendas já calculadas não mudam; se mudariam, o sistema avisa e não salva.">
+            <input type="hidden" name="quem" value={quem} /><input type="hidden" name="segmentoId" value={t.segmentoId} /><input type="hidden" name="soPara" value={soPara} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Campo rotulo="A partir de" nome={`nde-${t.id}`}><input id={`nde-${t.id}`} name="vigenteDe" type="date" className="campo" required /></Campo>
+              <Campo rotulo="Até (opcional)" nome={`nate-${t.id}`} ajuda="Preencha se o valor valeu só num intervalo: depois dele volta o valor que já estava"><input id={`nate-${t.id}`} name="vigenteAte" type="date" className="campo" /></Campo>
+            </div>
+            <CamposParcelas faixas={t.faixas} prefixo="Novo valor" />
+          </FormularioAcao>
+        </div>
+        {uso === 0 ? (
+          <div className="border-t border-wr-borda pt-3">
+            <FormularioAcao acao={excluirVigenciaAcao} rotulo="Excluir este período" perigo emLinha confirmacao="Exclui este período. Se ele tinha encerrado um período anterior da mesma regra, o anterior volta a valer.">
+              <input type="hidden" name="entidade" value="TABELA" /><input type="hidden" name="id" value={t.id} />
+              <input name="motivo" aria-label="Motivo da exclusão" placeholder="Motivo da exclusão" className="campo w-56" required minLength={3} />
+            </FormularioAcao>
+          </div>
+        ) : null}
       </div>
     </details>
   );
@@ -191,11 +257,11 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
             const linhas = d.tabelas.filter((t) => t.segmentoId === g.id && vigenteEm(hoje(), t.vigenteDe, t.vigenteAte));
             const nParcelas = Math.max(4, ...linhas.flatMap((t) => t.faixas.map((f) => f.parcela)));
             return (
-              <Secao key={g.id} titulo={`${g.nome}: percentuais em vigor hoje`} semPadding>
+              <Secao key={g.id} titulo={`${g.nome}: percentuais em vigor hoje`} descricao="Clique em Editar para corrigir um valor ou registrar que ele era diferente em outra época." semPadding>
                 {linhas.length === 0 ? <EstadoVazio titulo="Nenhum percentual em vigor para este segmento" /> : (
                   <div className="tabela-quadro">
                     <table className="tabela">
-                      <thead><tr><th>Quem recebe</th>{Array.from({ length: nParcelas }, (_, i) => <th key={i} className="direita">{i + 1}ª parcela</th>)}<th className="direita">Total</th><th>Desde</th></tr></thead>
+                      <thead><tr><th>Quem recebe</th>{Array.from({ length: nParcelas }, (_, i) => <th key={i} className="direita">{i + 1}ª parcela</th>)}<th className="direita">Total</th><th>Desde</th>{editar ? <th>Ações</th> : null}</tr></thead>
                       <tbody>
                         {linhas.map((t) => (
                           <tr key={t.id}>
@@ -203,6 +269,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                             {Array.from({ length: nParcelas }, (_, i) => { const f = t.faixas.find((x) => x.parcela === i + 1); return <td key={i} className="direita">{f ? <Percentual valor={f.percentual} /> : <Traco />}</td>; })}
                             <td className="direita font-semibold"><Percentual valor={somar(t.faixas.map((f) => dec(f.percentual)))} /></td>
                             <td><DataCurta valor={t.vigenteDe} /></td>
+                            {editar ? <td><EditarLinhaTabela t={t} uso={d.usosVigencia.get(t.id) ?? 0} /></td> : null}
                           </tr>
                         ))}
                       </tbody>
@@ -215,7 +282,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
           {editar ? (
             <Secao titulo="Definir percentuais" descricao="Preencha e salve. A data pode ser passada: o sistema encaixa no histórico. Vendas já calculadas não mudam; se a data mudaria alguma, o sistema avisa e não salva. Use “Simular impacto” para ver a diferença antes.">
               <FormularioComSimulacao salvar={abrirTabelaAcao} simular={simularTabelaAcao} confirmacao="Os percentuais valem para as vendas feitas a partir da data informada.">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                   <Campo rotulo="Quem recebe" nome="quem">
                     <select id="quem" name="quem" className="campo">
                       <optgroup label="Vendedor da categoria">{d.categorias.map((c) => <option key={c.id} value={`V:${c.id}`}>Vendedor {c.nome}</option>)}</optgroup>
@@ -225,6 +292,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                   </Campo>
                   <Campo rotulo="Segmento (tipo de bem)" nome="segmentoId"><select id="segmentoId" name="segmentoId" className="campo">{d.segmentos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}</select></Campo>
                   <Campo rotulo="A partir de" nome="vigenteDe"><input id="vigenteDe" name="vigenteDe" type="date" defaultValue={hojeISO} className="campo" required /></Campo>
+                  <Campo rotulo="Até (opcional)" nome="vigenteAte" ajuda="Só se valeu num intervalo"><input id="vigenteAte" name="vigenteAte" type="date" className="campo" /></Campo>
                   <Campo rotulo="Só para uma pessoa (opcional)" nome="soPara" ajuda="Deixe “Todos” para a regra geral">
                     <select id="soPara" name="soPara" className="campo" defaultValue="">
                       <option value="">Todos</option>
@@ -252,7 +320,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
               </FormularioComSimulacao>
             </Secao>
           ) : null}
-          <Dobra chave="cfg-hist-tabelas" titulo={`Histórico completo dos percentuais (${d.tabelas.length})`}>
+          <Dobra chave="cfg-hist-tabelas" titulo={`Todos os períodos, inclusive passados e futuros (${d.tabelas.length})`}>
             <div className="tabela-quadro">
               <table className="tabela">
                 <thead><tr><th>Quem recebe</th><th>Segmento</th>{[1, 2, 3, 4, 5, 6].map((n) => <th key={n} className="direita">{n}ª</th>)}<th className="direita">Total</th><th>Período</th>{editar ? <th>Ações</th> : null}</tr></thead>
@@ -266,17 +334,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
                       <td><Vig de={t.vigenteDe} ate={t.vigenteAte} /></td>
                       {editar ? (
                         <td>
-                          <AcoesVigencia entidade="TABELA" id={t.id} uso={d.usosVigencia.get(t.id) ?? 0} de={t.vigenteDe} ate={t.vigenteAte} corrigir={corrigirTabelaAcao}>
-                            <fieldset>
-                              <legend className="rotulo mb-1">% por parcela (em branco = não paga)</legend>
-                              <div className="grid grid-cols-4 gap-1">
-                                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                                  <label key={n} className="text-[11px] text-wr-texto-3">{n}ª<input name={`p${n}`} inputMode="decimal" placeholder="—" defaultValue={t.faixas.find((f) => f.parcela === n)?.percentual.toString() ?? ''} className="campo numero mt-0.5" /></label>
-                                ))}
-                              </div>
-                            </fieldset>
-                            <Campo rotulo="Observação" nome={`obs-${t.id}`}><input id={`obs-${t.id}`} name="observacao" defaultValue={t.observacao ?? ''} className="campo" /></Campo>
-                          </AcoesVigencia>
+                          <EditarLinhaTabela t={t} uso={d.usosVigencia.get(t.id) ?? 0} />
                         </td>
                       ) : null}
                     </tr>

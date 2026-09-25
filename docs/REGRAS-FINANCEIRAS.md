@@ -47,6 +47,8 @@ Volume = soma do **crédito total** das vendas de todos os documentos da pessoa,
 
 **Data passada.** Salvar uma regra com data de início encaixa a regra na linha do tempo: depois de uma vigência, encerra a anterior na véspera; antes de uma vigência, termina na véspera da seguinte; na mesma data de uma vigência ainda não usada, substitui. É recusado só quando tiraria a regra de um fato já calculado.
 
+**Valor só num intervalo (comissões).** Informando também a data final, o valor vale só naquele intervalo e o período que cobria a data continua depois dele, com os mesmos percentuais (a continuação é um período novo, auditado). Recusado se a data final passar por cima do período seguinte ou se mudar comissão já calculada.
+
 **Correção de cadastro.** Vigência que ainda **não foi usada em nenhum cálculo** (nenhuma comissão, estorno ou venda congelada aponta para ela) pode ser **corrigida** — valores e datas, inclusive para trás — ou **excluída**, em Configurações (tabelas de comissão, critério e percentuais de estorno, metas, flex; segmentos sem uso também). Ao excluir, a vigência anterior da mesma regra, que tinha sido encerrada por ela, volta a valer pelo período. Motivo obrigatório, auditoria com antes e depois, e as vendas em pendência voltam para a fila. Depois de usada, a vigência é imutável: a mudança é vigência nova. — `src/servidor/servicos/vigencias.ts`, teste em `tests/integration/vigencia.test.ts`.
 
 ## 6. Decisões técnicas tomadas na implementação

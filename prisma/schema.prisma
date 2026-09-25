@@ -1,0 +1,1177 @@
+// ERP Financeiro e Comercial — WR Consórcio
+// Fonte de verdade funcional: docs/Especificacao-ERP-WR.pdf
+//
+// Convenções:
+// - Dinheiro: Decimal(18,2). Percentual: Decimal(9,4) em pontos percentuais (0,5% = 0.5000).
+// - Vigência: vigenteDe/vigenteAte são datas INCLUSIVAS; vigenteAte nulo = vigente.
+//   A não sobreposição é garantida no PostgreSQL (EXCLUDE USING gist, migration de integridade).
+// - Registros financeiros são append-only: corrigir = cancelar/invalidar + criar outro.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Perfil {
+  ADMINISTRADOR
+  FINANCEIRO
+  CADASTRO
+  GERENTE
+  SUPERVISOR
+}
+
+enum StatusUnidade {
+  ATIVO
+  INATIVO
+}
+
+enum TipoDocumento {
+  CPF
+  CNPJ
+}
+
+enum StatusVendedor {
+  ATIVO
+  DESLIGADO
+}
+
+enum PapelResponsavel {
+  SUPERVISOR
+  GERENTE
+}
+
+enum DestinoComissao {
+  VENDEDOR
+  SUPERVISAO
+  GERENCIA
+}
+
+enum StatusComissao {
+  PREVISTA
+  LIBERADA
+  EM_FOLHA
+  PAGA
+  CANCELADA
+}
+
+enum TipoEstorno {
+  RECUPERACAO
+  CANCELAMENTO
+}
+
+enum StatusEstorno {
+  A_COBRAR
+  EM_COBRANCA
+  QUITADO
+  PERDOADO
+  INVALIDADO
+}
+
+enum CriterioCancelamento {
+  IGUAL
+  ABAIXO_DE
+}
+
+enum EscopoBaseEstorno {
+  PARCELAS_RECEBIDAS
+  PRIMEIRA_PARCELA
+  TOTAL_TABELA
+}
+
+enum TipoImportacao {
+  CARTEIRA_CSV
+  FECHAMENTO_CV056E
+  COMISSAO_VENDEDOR_CV069E
+  BONUS_GC070A
+}
+
+enum StatusImportacao {
+  RECEBIDA
+  APLICANDO
+  APLICADA
+  FALHOU
+}
+
+enum StatusLinha {
+  PENDENTE
+  NOVA
+  ATUALIZADA
+  SEM_MUDANCA
+  ERRO
+}
+
+enum StatusFolha {
+  FECHADA
+  PAGA
+}
+
+enum AcaoAuditoria {
+  LOGIN
+  LOGIN_FALHA
+  LOGIN_BLOQUEADO
+  LOGOUT
+  CRIACAO
+  ALTERACAO
+  EXCLUSAO
+  DESATIVACAO
+  REATIVACAO
+  ALTERACAO_REGRA
+  ALTERACAO_CATEGORIA
+  PROMOCAO
+  ALTERACAO_ALOCACAO
+  RECUPERACAO
+  TRANSFERENCIA_VENDEDOR
+  RECONGELAMENTO
+  IMPORTACAO
+  APURACAO
+  FECHAMENTO_FOLHA
+  PAGAMENTO_FOLHA
+  ESTORNO_COBRANCA
+  TROCA_SENHA
+  ACESSO_DADO_PESSOAL
+  SOLICITACAO_TITULAR
+  ANONIMIZACAO
+  EXPORTACAO
+}
+
+enum TipoNotificacao {
+  PROXIMO_DA_META
+  APTO_A_PROMOCAO
+  PENDENCIA_CADASTRO
+  DIVERGENCIA_IMPORTACAO
+  ERRO_IMPORTACAO
+  IMPORTACAO_CONCLUIDA
+  ESTORNO_SEM_TITULAR
+  REGRA_FALTANTE
+  VENDEDOR_CORRIGIDO
+  BLOQUEIO_LOGIN
+  FALHA_PROCESSAMENTO
+}
+
+enum Severidade {
+  INFO
+  ATENCAO
+  CRITICA
+}
+
+enum StatusEvento {
+  PENDENTE
+  PROCESSANDO
+  CONCLUIDO
+  ERRO
+}
+
+enum TipoPendencia {
+  SEM_VENDEDOR
+  VENDEDOR_SEM_CADASTRO
+  SEM_CATEGORIA
+  SEM_ESTRUTURA
+  SEM_SEGMENTO
+  SEM_FLEX
+  SEM_TABELA
+  SEM_RESPONSAVEL
+  ESTORNO_SEM_CONFIGURACAO
+  ESTORNO_SEM_REGRA
+  ESTORNO_SEM_TITULAR
+  AJUSTE_FOLHA_FECHADA
+  ESTORNO_DIVERGENTE
+  DIVERGENCIA_VENDEDOR
+}
+
+enum StatusDivergencia {
+  ABERTA
+  ACEITA
+  REJEITADA
+}
+
+enum TipoLancamento {
+  COMISSAO_PARCELA
+  CANCELAMENTO
+  OUTRO
+}
+
+enum TipoSolicitacaoTitular {
+  ACESSO
+  CORRECAO
+  EXCLUSAO
+  ANONIMIZACAO
+}
+
+enum StatusSolicitacaoTitular {
+  ABERTA
+  ATENDIDA
+  RECUSADA
+}
+
+// ============================================================
+// 5.1 ACESSO E ESTRUTURA
+// ============================================================
+
+model Usuario {
+  id            String    @id @default(cuid())
+  nome          String
+  email         String    @unique
+  senhaHash     String
+  perfil        Perfil
+  gerenciaId    String?
+  equipeId      String?
+  ativo         Boolean   @default(true)
+  // Incrementado a cada troca de senha/perfil/escopo/desativação: invalida sessões antigas.
+  versaoSessao  Int       @default(1)
+  ultimoAcesso  DateTime?
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  gerencia      Gerencia? @relation(fields: [gerenciaId], references: [id])
+  equipe        Equipe?   @relation(fields: [equipeId], references: [id])
+  auditorias    AuditLog[]
+  notificacoes  Notificacao[]
+
+  @@map("usuario")
+}
+
+model LoginTentativa {
+  id        BigInt   @id @default(autoincrement())
+  email     String
+  ip        String
+  sucesso   Boolean
+  criadoEm  DateTime @default(now())
+
+  @@index([email, criadoEm])
+  @@index([ip, criadoEm])
+  @@map("login_tentativa")
+}
+
+model Administradora {
+  id        String   @id @default(cuid())
+  codigo    String   @unique
+  nome      String
+  cnpj      String?  @unique
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  cotas     Cota[]
+  importacoes Importacao[]
+
+  @@map("administradora")
+}
+
+model Gerencia {
+  id        String        @id @default(cuid())
+  nome      String        @unique
+  status    StatusUnidade @default(ATIVO)
+  criadoEm  DateTime      @default(now())
+
+  equipes       Equipe[]
+  responsaveis  ResponsavelUnidade[]
+  usuarios      Usuario[]
+  cotasSnapshot Cota[]            @relation("SnapGerencia")
+  bonus         BonusIncentivo[]
+
+  @@map("gerencia")
+}
+
+model Equipe {
+  id         String        @id @default(cuid())
+  nome       String
+  gerenciaId String
+  status     StatusUnidade @default(ATIVO)
+  criadoEm   DateTime      @default(now())
+
+  gerencia      Gerencia             @relation(fields: [gerenciaId], references: [id])
+  responsaveis  ResponsavelUnidade[]
+  alocacoes     VendedorAlocacao[]
+  usuarios      Usuario[]
+  cotasSnapshot Cota[]               @relation("SnapEquipe")
+  bonus         BonusIncentivo[]
+
+  @@unique([gerenciaId, nome])
+  @@map("equipe")
+}
+
+model ResponsavelUnidade {
+  id          String           @id @default(cuid())
+  papel       PapelResponsavel
+  gerenciaId  String?
+  equipeId    String?
+  pessoaId    String
+  vigenteDe   DateTime         @db.Date
+  vigenteAte  DateTime?        @db.Date
+  criadoPorId String?
+  criadoEm    DateTime         @default(now())
+
+  gerencia Gerencia? @relation(fields: [gerenciaId], references: [id])
+  equipe   Equipe?   @relation(fields: [equipeId], references: [id])
+  pessoa   Pessoa    @relation(fields: [pessoaId], references: [id])
+
+  @@index([pessoaId])
+  @@map("responsavel_unidade")
+}
+
+model Pessoa {
+  id               String   @id @default(cuid())
+  nome             String
+  nomeNormalizado  String
+  criadoEm         DateTime @default(now())
+
+  documentos       Vendedor[]
+  vinculos         PessoaVinculo[]
+  responsabilidades ResponsavelUnidade[]
+  comissoes        ComissaoApurada[]
+  estornos         Estorno[]
+
+  @@index([nomeNormalizado])
+  @@map("pessoa")
+}
+
+// O DOCUMENTO que vende. Carrega categoria, alocação e exceções próprias.
+model Vendedor {
+  id               String         @id @default(cuid())
+  pessoaId         String
+  tipoDocumento    TipoDocumento
+  documento        String         @unique // somente dígitos
+  nome             String
+  nomeNormalizado  String
+  status           StatusVendedor @default(ATIVO)
+  desligadoEm      DateTime?      @db.Date
+  criadoEm         DateTime       @default(now())
+
+  pessoa           Pessoa               @relation(fields: [pessoaId], references: [id])
+  categorias       VendedorCategoria[]
+  alocacoes        VendedorAlocacao[]
+  recuperacoes     PeriodoRecuperacao[]
+  vinculos         PessoaVinculo[]
+  cotasAtuais      Cota[]               @relation("VendedorAtual")
+  cotasSnapshot    Cota[]               @relation("SnapVendedor")
+  excecoesComissao TabelaComissao[]
+  excecoesEstorno  RegraEstorno[]
+  comissoes        ComissaoApurada[]
+  estornos         Estorno[]
+  aliases          VendedorAlias[]
+
+  @@index([pessoaId])
+  @@index([nomeNormalizado])
+  @@map("vendedor")
+}
+
+// Nome alternativo (abreviação, grafia da administradora) que casa com um documento.
+// Só é criado por decisão humana registrada — nunca por aproximação automática.
+model VendedorAlias {
+  id              String   @id @default(cuid())
+  vendedorId      String
+  nomeNormalizado String   @unique
+  criadoPorId     String?
+  criadoEm        DateTime @default(now())
+
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id])
+
+  @@map("vendedor_alias")
+}
+
+// Histórico append-only das ligações documento → pessoa.
+model PessoaVinculo {
+  id          String   @id @default(cuid())
+  pessoaId    String
+  vendedorId  String
+  motivo      String
+  criadoPorId String?
+  criadoEm    DateTime @default(now())
+
+  pessoa   Pessoa   @relation(fields: [pessoaId], references: [id])
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id])
+
+  @@index([vendedorId])
+  @@map("pessoa_vinculo")
+}
+
+model CategoriaVendedor {
+  id                String          @id @default(cuid())
+  codigo            String          @unique // imutável (trigger)
+  nome              String
+  descricao         String?
+  ordem             Int             // degrau na escada de promoção
+  documentosAceitos TipoDocumento[]
+  pagaPelaWr        Boolean
+  geraSupervisao    Boolean
+  geraGerencia      Boolean
+  contaParaPromocao Boolean
+  ativo             Boolean         @default(true)
+  criadoEm          DateTime        @default(now())
+
+  vigencias      VendedorCategoria[]
+  tabelas        TabelaComissao[]
+  cotasSnapshot  Cota[]             @relation("SnapCategoria")
+  metasOrigem    MetaPromocao[]     @relation("MetaOrigem")
+  metasAlvo      MetaPromocao[]     @relation("MetaAlvo")
+
+  @@map("categoria_vendedor")
+}
+
+model VendedorCategoria {
+  id          String    @id @default(cuid())
+  vendedorId  String
+  categoriaId String
+  vigenteDe   DateTime  @db.Date
+  vigenteAte  DateTime? @db.Date
+  promocao    Boolean   @default(false)
+  motivo      String?
+  criadoPorId String?
+  criadoEm    DateTime  @default(now())
+
+  vendedor  Vendedor          @relation(fields: [vendedorId], references: [id])
+  categoria CategoriaVendedor @relation(fields: [categoriaId], references: [id])
+
+  @@index([vendedorId, vigenteDe])
+  @@map("vendedor_categoria")
+}
+
+model VendedorAlocacao {
+  id          String    @id @default(cuid())
+  vendedorId  String
+  equipeId    String
+  vigenteDe   DateTime  @db.Date
+  vigenteAte  DateTime? @db.Date
+  motivo      String?
+  criadoPorId String?
+  criadoEm    DateTime  @default(now())
+
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id])
+  equipe   Equipe   @relation(fields: [equipeId], references: [id])
+
+  @@index([vendedorId, vigenteDe])
+  @@index([equipeId])
+  @@map("vendedor_alocacao")
+}
+
+model PeriodoRecuperacao {
+  id            String    @id @default(cuid())
+  vendedorId    String
+  inicio        DateTime  @db.Date
+  fim           DateTime? @db.Date
+  motivo        String?
+  canceladoEm   DateTime?
+  canceladoPorId String?
+  motivoCancelamento String?
+  criadoPorId   String?
+  criadoEm      DateTime  @default(now())
+
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id])
+
+  @@index([vendedorId])
+  @@map("periodo_recuperacao")
+}
+
+model Segmento {
+  id       String   @id @default(cuid())
+  codigo   String   @unique
+  nome     String
+  // Textos da base de clientes que identificam o segmento (normalizados).
+  aliases  String[]
+  ativo    Boolean  @default(true)
+
+  tabelas  TabelaComissao[]
+  cotas    Cota[]   @relation("SnapSegmento")
+
+  @@map("segmento")
+}
+
+// ============================================================
+// 5.2 CARTEIRA
+// ============================================================
+
+model Cota {
+  id                String    @id @default(cuid())
+  administradoraId  String
+  contrato          String
+  grupo             String
+  cota              String
+  cpfCliente        String    // somente dígitos
+
+  clienteNome       String
+  clienteEmail      String?
+  clienteTelefone   String?
+  credito           Decimal   @db.Decimal(18, 2)
+  dataVenda         DateTime  @db.Date
+  parcelasPagas     Int
+  situacao          String    // texto exato enviado pela administradora
+  cancelada         Boolean   @default(false)
+  dataCancelamento  DateTime? @db.Date
+  origemDataCancelamento String?
+  segmentoTexto     String?
+  flexTexto         String?
+  vendedorNomeImportado String?
+  vendedorDocImportado  String?
+  hashConteudo      String
+  anonimizadaEm     DateTime?
+
+  // Responsável atual pela venda (muda só por transferência registrada).
+  vendedorId        String?
+
+  // ---- SNAPSHOT congelado na entrada (6.3) ----
+  snapVendedorId        String?
+  snapCategoriaId       String?
+  snapSegmentoId        String?
+  snapModalidadeFlexId  String?
+  snapEquipeId          String?
+  snapGerenciaId        String?
+  snapSupervisorPessoaId String?
+  snapGerentePessoaId   String?
+  snapRecuperacao       Boolean   @default(false)
+  // Comportamento da categoria congelado com ela: editar a categoria muda só o futuro.
+  snapPagaPelaWr        Boolean?
+  snapGeraSupervisao    Boolean?
+  snapGeraGerencia      Boolean?
+  snapCongeladoEm       DateTime?
+  snapOrigem            String?   // IMPORTACAO | TRANSFERENCIA | RECONGELAMENTO
+
+  primeiraImportacaoId  String?
+  ultimaImportacaoId    String?
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
+
+  administradora    Administradora     @relation(fields: [administradoraId], references: [id])
+  vendedor          Vendedor?          @relation("VendedorAtual", fields: [vendedorId], references: [id])
+  snapVendedor      Vendedor?          @relation("SnapVendedor", fields: [snapVendedorId], references: [id])
+  snapCategoria     CategoriaVendedor? @relation("SnapCategoria", fields: [snapCategoriaId], references: [id])
+  snapSegmento      Segmento?          @relation("SnapSegmento", fields: [snapSegmentoId], references: [id])
+  snapModalidadeFlex ModalidadeFlex?   @relation("SnapFlex", fields: [snapModalidadeFlexId], references: [id])
+  snapEquipe        Equipe?            @relation("SnapEquipe", fields: [snapEquipeId], references: [id])
+  snapGerencia      Gerencia?          @relation("SnapGerencia", fields: [snapGerenciaId], references: [id])
+
+  versoes           CotaVersao[]
+  transferencias    CotaTransferencia[]
+  comissoes         ComissaoApurada[]
+  estornos          Estorno[]
+  lancamentos       LancamentoAdministradora[]
+  comissoesAdm      ComissaoVendedorAdm[]
+  bonus             BonusIncentivo[]
+  eventos           EventoDominio[]
+  pendencias        Pendencia[]
+  divergencias      DivergenciaVendedor[]
+
+  @@unique([administradoraId, contrato, grupo, cota, cpfCliente], name: "identidade")
+  @@index([dataVenda])
+  @@index([snapGerenciaId])
+  @@index([snapEquipeId])
+  @@index([snapVendedorId])
+  @@index([vendedorId])
+  @@index([cpfCliente])
+  @@index([grupo, cota])
+  @@index([contrato])
+  @@index([dataCancelamento])
+  @@map("cota")
+}
+
+model CotaVersao {
+  id           String   @id @default(cuid())
+  cotaId       String
+  importacaoId String?
+  hash         String
+  dados        Json
+  criadoEm     DateTime @default(now())
+
+  cota       Cota        @relation(fields: [cotaId], references: [id])
+  importacao Importacao? @relation(fields: [importacaoId], references: [id])
+
+  @@index([cotaId, criadoEm])
+  @@map("cota_versao")
+}
+
+model CotaTransferencia {
+  id                  String   @id @default(cuid())
+  cotaId              String
+  vendedorAnteriorId  String?
+  vendedorNovoId      String
+  motivo              String
+  origem              String   // MANUAL | DIVERGENCIA_IMPORTACAO
+  criadoPorId         String?
+  criadoEm            DateTime @default(now())
+
+  cota Cota @relation(fields: [cotaId], references: [id])
+
+  @@index([cotaId])
+  @@map("cota_transferencia")
+}
+
+// Vendedor corrigido pela administradora numa reimportação: nunca aceito em silêncio.
+model DivergenciaVendedor {
+  id               String            @id @default(cuid())
+  cotaId           String
+  importacaoId     String?
+  nomeAnterior     String?
+  docAnterior      String?
+  nomeNovo         String?
+  docNovo          String?
+  status           StatusDivergencia @default(ABERTA)
+  resolvidoPorId   String?
+  resolvidoEm      DateTime?
+  observacao       String?
+  criadoEm         DateTime          @default(now())
+
+  cota Cota @relation(fields: [cotaId], references: [id])
+
+  @@index([status])
+  @@map("divergencia_vendedor")
+}
+
+// ============================================================
+// 5.3 REGRAS — TODAS COM VIGÊNCIA
+// ============================================================
+
+model TabelaComissao {
+  id                String          @id @default(cuid())
+  destino           DestinoComissao
+  segmentoId        String
+  // Para destino VENDEDOR: a categoria da venda. Para SUPERVISAO/GERENCIA: nulo.
+  categoriaId       String?
+  // Exceção individual: documento (VENDEDOR) ou pessoa (SUPERVISAO/GERENCIA). Nulo = regra padrão.
+  titularVendedorId String?
+  titularPessoaId   String?
+  vigenteDe         DateTime        @db.Date
+  vigenteAte        DateTime?       @db.Date
+  observacao        String?
+  criadoPorId       String?
+  criadoEm          DateTime        @default(now())
+
+  segmento        Segmento           @relation(fields: [segmentoId], references: [id])
+  categoria       CategoriaVendedor? @relation(fields: [categoriaId], references: [id])
+  titularVendedor Vendedor?          @relation(fields: [titularVendedorId], references: [id])
+  faixas          FaixaComissao[]
+  comissoes       ComissaoApurada[]
+
+  @@index([destino, segmentoId, vigenteDe])
+  @@map("tabela_comissao")
+}
+
+model FaixaComissao {
+  id         String  @id @default(cuid())
+  tabelaId   String
+  parcela    Int
+  percentual Decimal @db.Decimal(9, 4)
+
+  tabela TabelaComissao @relation(fields: [tabelaId], references: [id])
+
+  @@unique([tabelaId, parcela])
+  @@map("faixa_comissao")
+}
+
+model ModalidadeFlex {
+  id          String    @id @default(cuid())
+  codigo      String
+  nome        String
+  // Percentual do crédito que forma a base: Flex 50 = 50.
+  percentual  Decimal   @db.Decimal(9, 4)
+  aliases     String[]
+  vigenteDe   DateTime  @db.Date
+  vigenteAte  DateTime? @db.Date
+  criadoPorId String?
+  criadoEm    DateTime  @default(now())
+
+  cotas Cota[] @relation("SnapFlex")
+
+  @@index([codigo, vigenteDe])
+  @@map("modalidade_flex")
+}
+
+model ConfiguracaoEstorno {
+  id                    String               @id @default(cuid())
+  // Códigos das categorias (destino VENDEDOR) e/ou "SUPERVISAO"/"GERENCIA".
+  participantes         String[]
+  criterioCancelamento  CriterioCancelamento
+  // Limite zero desliga o estorno por cancelamento.
+  limiteParcelas        Int
+  // Recuperação: venda feita em período de recuperação e cancelada conforme este critério.
+  // Nulos = qualquer quantidade de parcelas pagas.
+  criterioRecuperacao   CriterioCancelamento?
+  limiteRecuperacao     Int?
+  // Nulo = não definido: estorno não é apurado e vira pendência.
+  escopoBase            EscopoBaseEstorno?
+  vigenteDe             DateTime             @db.Date
+  vigenteAte            DateTime?            @db.Date
+  criadoPorId           String?
+  criadoEm              DateTime             @default(now())
+
+  estornos Estorno[]
+
+  @@map("configuracao_estorno")
+}
+
+model RegraEstorno {
+  id                String      @id @default(cuid())
+  tipo              TipoEstorno
+  /// Código da categoria do vendedor ou SUPERVISAO/GERENCIA. Nulo = vale para todos os participantes.
+  participante      String?
+  titularVendedorId String?
+  percentual        Decimal     @db.Decimal(9, 4)
+  vigenteDe         DateTime    @db.Date
+  vigenteAte        DateTime?   @db.Date
+  criadoPorId       String?
+  criadoEm          DateTime    @default(now())
+
+  titularVendedor Vendedor? @relation(fields: [titularVendedorId], references: [id])
+  estornos        Estorno[]
+
+  @@index([tipo, vigenteDe])
+  @@map("regra_estorno")
+}
+
+model MetaPromocao {
+  id                 String         @id @default(cuid())
+  categoriaOrigemId  String
+  categoriaAlvoId    String
+  volumeMinimo       Decimal        @db.Decimal(18, 2)
+  alertaAoFaltar     Decimal        @db.Decimal(18, 2)
+  documentoExigido   TipoDocumento?
+  vigenteDe          DateTime       @db.Date
+  vigenteAte         DateTime?      @db.Date
+  criadoPorId        String?
+  criadoEm           DateTime       @default(now())
+
+  categoriaOrigem CategoriaVendedor @relation("MetaOrigem", fields: [categoriaOrigemId], references: [id])
+  categoriaAlvo   CategoriaVendedor @relation("MetaAlvo", fields: [categoriaAlvoId], references: [id])
+
+  @@map("meta_promocao")
+}
+
+// ============================================================
+// 5.4 FATOS DA ADMINISTRADORA
+// ============================================================
+
+model LancamentoAdministradora {
+  id               String         @id @default(cuid())
+  importacaoId     String
+  cotaId           String?
+  grupo            String
+  cota             String
+  contrato         String?
+  consorciado      String?
+  tipoOrigemTexto  String         // texto exato da coluna de origem
+  tipo             TipoLancamento
+  parcela          Int?
+  valor            Decimal        @db.Decimal(18, 2)
+  dataReferencia   DateTime?      @db.Date
+  hash             String         @unique
+  linhaOriginal    String
+  criadoEm         DateTime       @default(now())
+
+  importacao Importacao @relation(fields: [importacaoId], references: [id])
+  cotaRef    Cota?      @relation(fields: [cotaId], references: [id])
+
+  @@index([cotaId])
+  @@index([grupo, cota])
+  @@map("lancamento_administradora")
+}
+
+model ComissaoVendedorAdm {
+  id             String    @id @default(cuid())
+  importacaoId   String
+  cotaId         String?
+  vendedorId     String?
+  vendedorTexto  String?
+  grupo          String
+  cota           String
+  contrato       String?
+  parcela        Int?
+  valor          Decimal   @db.Decimal(18, 2)
+  dataReferencia DateTime? @db.Date
+  hash           String    @unique
+  linhaOriginal  String
+  criadoEm       DateTime  @default(now())
+
+  importacao Importacao @relation(fields: [importacaoId], references: [id])
+  cotaRef    Cota?      @relation(fields: [cotaId], references: [id])
+
+  @@index([cotaId])
+  @@map("comissao_vendedor_adm")
+}
+
+model BonusIncentivo {
+  id                  String    @id @default(cuid())
+  importacaoId        String
+  cotaId              String?
+  consorciado         String?
+  grupo               String
+  cota                String
+  contrato            String?
+  parcela             Int?
+  valorEvento         Decimal   @db.Decimal(18, 2)
+  percentualIncentivo Decimal   @db.Decimal(9, 4)
+  valorBonus          Decimal   @db.Decimal(18, 2)
+  // Atribuição congelada na importação (ou na reconciliação registrada).
+  vendedorNaImportacaoId String?
+  vendedorNaImportacaoNome String?
+  equipeId            String?
+  gerenciaId          String?
+  reconciliadoEm      DateTime?
+  reconciliadoPorId   String?
+  dataReferencia      DateTime? @db.Date
+  hash                String    @unique
+  linhaOriginal       String
+  criadoEm            DateTime  @default(now())
+
+  importacao Importacao @relation(fields: [importacaoId], references: [id])
+  cotaRef    Cota?      @relation(fields: [cotaId], references: [id])
+  equipe     Equipe?    @relation(fields: [equipeId], references: [id])
+  gerencia   Gerencia?  @relation(fields: [gerenciaId], references: [id])
+
+  @@index([cotaId])
+  @@index([gerenciaId])
+  @@map("bonus_incentivo")
+}
+
+// ============================================================
+// 5.5 APURAÇÃO
+// ============================================================
+
+model ComissaoApurada {
+  id                String          @id @default(cuid())
+  cotaId            String
+  parcela           Int
+  destino           DestinoComissao
+  titularVendedorId String?         // documento (destino VENDEDOR)
+  titularPessoaId   String          // pessoa beneficiária (consolida a folha)
+  tabelaId          String
+  base              Decimal         @db.Decimal(18, 2)
+  percentual        Decimal         @db.Decimal(9, 4)
+  valor             Decimal         @db.Decimal(18, 2)
+  pagaPelaWr        Boolean
+  status            StatusComissao  @default(PREVISTA)
+  parcelasPagasNaLiberacao Int?
+  liberadaEm        DateTime?
+  folhaId           String?
+  memoria           Json
+  canceladaEm       DateTime?
+  motivoCancelamento String?
+  // Ajuste de comissão já em folha fechada: aponta para a linha original congelada.
+  // Pode ser negativo (devolução do que foi pago a mais). Nunca altera a folha fechada.
+  ajusteDeId        String?
+  criadoEm          DateTime        @default(now())
+
+  cota            Cota           @relation(fields: [cotaId], references: [id])
+  ajusteDe        ComissaoApurada?  @relation("Ajustes", fields: [ajusteDeId], references: [id])
+  ajustes         ComissaoApurada[] @relation("Ajustes")
+  titularVendedor Vendedor?      @relation(fields: [titularVendedorId], references: [id])
+  titularPessoa   Pessoa         @relation(fields: [titularPessoaId], references: [id])
+  tabela          TabelaComissao @relation(fields: [tabelaId], references: [id])
+  folha           FolhaComissao? @relation(fields: [folhaId], references: [id])
+
+  @@index([cotaId])
+  @@index([titularPessoaId, status])
+  @@index([status, liberadaEm])
+  @@index([folhaId])
+  @@map("comissao_apurada")
+}
+
+model Estorno {
+  id                 String        @id @default(cuid())
+  cotaId             String
+  destino            DestinoComissao
+  tipo               TipoEstorno
+  titularVendedorId  String?
+  titularPessoaId    String?       // nulo = SEM TITULAR (vira pendência, nunca some)
+  configuracaoId     String
+  regraId            String?
+  parcelasPagas      Int
+  comissaoBase       Decimal       @db.Decimal(18, 2)
+  percentual         Decimal       @db.Decimal(9, 4)
+  valor              Decimal       @db.Decimal(18, 2)
+  dataEvento         DateTime      @db.Date // data do cancelamento
+  dataDebitoAdm      DateTime?     @db.Date // competência da cobrança (CV056E)
+  status             StatusEstorno @default(A_COBRAR)
+  memoria            Json
+  invalidadoEm       DateTime?
+  motivoInvalidacao  String?
+  criadoEm           DateTime      @default(now())
+
+  cota            Cota                @relation(fields: [cotaId], references: [id])
+  titularVendedor Vendedor?           @relation(fields: [titularVendedorId], references: [id])
+  titularPessoa   Pessoa?             @relation(fields: [titularPessoaId], references: [id])
+  configuracao    ConfiguracaoEstorno @relation(fields: [configuracaoId], references: [id])
+  regra           RegraEstorno?       @relation(fields: [regraId], references: [id])
+  movimentos      EstornoMovimento[]
+
+  @@index([cotaId])
+  @@index([titularPessoaId, status])
+  @@index([dataEvento])
+  @@map("estorno")
+}
+
+// Ciclo de vida da cobrança do estorno (append-only).
+model EstornoMovimento {
+  id          String        @id @default(cuid())
+  estornoId   String
+  de          StatusEstorno
+  para        StatusEstorno
+  valor       Decimal?      @db.Decimal(18, 2)
+  forma       String?       // DESCONTO_EM_FOLHA | COBRANCA_A_PARTE | PARCELAMENTO
+  referencia  String?
+  motivo      String
+  usuarioId   String?
+  criadoEm    DateTime      @default(now())
+
+  estorno Estorno @relation(fields: [estornoId], references: [id])
+
+  @@index([estornoId])
+  @@map("estorno_movimento")
+}
+
+model FolhaComissao {
+  id               String      @id @default(cuid())
+  competencia      String      // AAAA-MM
+  liberadasAte     DateTime
+  status           StatusFolha @default(FECHADA)
+  total            Decimal     @db.Decimal(18, 2)
+  quantidade       Int
+  fechadaEm        DateTime    @default(now())
+  fechadaPorId     String?
+  pagaEm           DateTime?
+  pagaPorId        String?
+  valorPagoInformado Decimal?  @db.Decimal(18, 2)
+  referenciaPagamento String?
+  observacao       String?
+
+  comissoes ComissaoApurada[]
+
+  @@index([competencia])
+  @@map("folha_comissao")
+}
+
+// Dinheiro que deveria ter sido apurado e não foi (Princípio 6).
+model Pendencia {
+  id          String          @id @default(cuid())
+  cotaId      String?
+  tipo        TipoPendencia
+  destino     DestinoComissao?
+  chave       String          // dedupe: tipo + destino + detalhe
+  descricao   String
+  detalhe     Json?
+  resolvidaEm DateTime?
+  criadoEm    DateTime        @default(now())
+
+  cota Cota? @relation(fields: [cotaId], references: [id])
+
+  @@index([tipo, resolvidaEm])
+  @@index([cotaId])
+  @@map("pendencia")
+}
+
+// ============================================================
+// 5.6 IMPORTAÇÃO, AUDITORIA E FILA
+// ============================================================
+
+model Importacao {
+  id                 String           @id @default(cuid())
+  tipo               TipoImportacao
+  administradoraId   String
+  nomeArquivo        String
+  hashArquivo        String
+  tamanhoBytes       Int
+  status             StatusImportacao @default(RECEBIDA)
+  totalLinhas        Int              @default(0)
+  novos              Int              @default(0)
+  atualizados        Int              @default(0)
+  repetidos          Int              @default(0)
+  erros              Int              @default(0)
+  divergencias       Int              @default(0)
+  totalArquivo       Decimal?         @db.Decimal(18, 2)
+  totalReconhecido   Decimal?         @db.Decimal(18, 2)
+  diferencaConferencia Decimal?       @db.Decimal(18, 2)
+  cursor             Int              @default(0)
+  mensagem           String?
+  enviadoPorId       String?
+  enviadoEm          DateTime         @default(now())
+  concluidoEm        DateTime?
+
+  administradora Administradora      @relation(fields: [administradoraId], references: [id])
+  linhas         LinhaDeImportacao[]
+  errosLista     ImportacaoErro[]
+  versoes        CotaVersao[]
+  lancamentos    LancamentoAdministradora[]
+  comissoesAdm   ComissaoVendedorAdm[]
+  bonus          BonusIncentivo[]
+
+  @@index([hashArquivo])
+  @@index([enviadoEm])
+  @@map("importacao")
+}
+
+model LinhaDeImportacao {
+  id           String      @id @default(cuid())
+  importacaoId String
+  numero       Int
+  dados        Json
+  original     String
+  status       StatusLinha @default(PENDENTE)
+  mensagem     String?
+
+  importacao Importacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@unique([importacaoId, numero])
+  @@index([importacaoId, status])
+  @@map("linha_importacao")
+}
+
+model ImportacaoErro {
+  id           String   @id @default(cuid())
+  importacaoId String
+  linha        Int
+  conteudo     String
+  motivo       String
+  criadoEm     DateTime @default(now())
+
+  importacao Importacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@index([importacaoId])
+  @@map("importacao_erro")
+}
+
+model AuditLog {
+  id         BigInt        @id @default(autoincrement())
+  usuarioId  String?
+  email      String?
+  acao       AcaoAuditoria
+  entidade   String
+  entidadeId String?
+  antes      Json?
+  depois     Json?
+  contexto   Json?
+  ip         String?
+  criadoEm   DateTime      @default(now())
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([criadoEm])
+  @@index([entidade, entidadeId])
+  @@index([usuarioId, criadoEm])
+  @@index([acao, criadoEm])
+  @@map("audit_log")
+}
+
+model Notificacao {
+  id         String          @id @default(cuid())
+  usuarioId  String
+  tipo       TipoNotificacao
+  severidade Severidade
+  titulo     String
+  mensagem   String
+  link       String?
+  chave      String
+  lidaEm     DateTime?
+  criadoEm   DateTime        @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@unique([usuarioId, chave])
+  @@index([usuarioId, lidaEm])
+  @@map("notificacao")
+}
+
+model ConfiguracaoSistema {
+  chave        String   @id
+  valor        Json
+  descricao    String?
+  atualizadoPorId String?
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@map("configuracao_sistema")
+}
+
+// Fila de recálculo: o pedido é gravado junto com a cota, na mesma transação.
+model EventoDominio {
+  id                String       @id @default(cuid())
+  tipo              String       // APURAR_COTA
+  cotaId            String?
+  payload           Json?
+  status            StatusEvento @default(PENDENTE)
+  tentativas        Int          @default(0)
+  proximaTentativaEm DateTime    @default(now())
+  ultimoErro        String?
+  criadoEm          DateTime     @default(now())
+  processadoEm      DateTime?
+
+  cota     Cota?           @relation(fields: [cotaId], references: [id])
+  entregas EventoEntrega[]
+
+  @@index([status, proximaTentativaEm])
+  @@index([cotaId])
+  @@map("evento_dominio")
+}
+
+model EventoEntrega {
+  id          String    @id @default(cuid())
+  eventoId    String
+  tentativa   Int
+  iniciadoEm  DateTime  @default(now())
+  concluidoEm DateTime?
+  sucesso     Boolean   @default(false)
+  erro        String?
+
+  evento EventoDominio @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId])
+  @@map("evento_entrega")
+}
+
+// ============================================================
+// LGPD E ANEXOS
+// ============================================================
+
+// Registro de LEITURA de dado pessoal (a auditoria cobre escrita).
+model AcessoDadoPessoal {
+  id         BigInt   @id @default(autoincrement())
+  usuarioId  String
+  entidade   String
+  entidadeId String
+  finalidade String
+  ip         String?
+  criadoEm   DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([usuarioId, criadoEm])
+  @@map("acesso_dado_pessoal")
+}
+
+model SolicitacaoTitular {
+  id           String                   @id @default(cuid())
+  documento    String                   // CPF/CNPJ do titular (dígitos)
+  nome         String
+  tipo         TipoSolicitacaoTitular
+  descricao    String
+  status       StatusSolicitacaoTitular @default(ABERTA)
+  resposta     String?
+  criadoPorId  String?
+  criadoEm     DateTime                 @default(now())
+  concluidoPorId String?
+  concluidoEm  DateTime?
+
+  @@index([documento])
+  @@map("solicitacao_titular")
+}
+
+// Estrutura preparada para anexos (armazenamento externo por storageKey).
+// Não há tela de upload: nenhum armazenamento de arquivos foi provisionado.
+model Anexo {
+  id          String   @id @default(cuid())
+  entidade    String   // Vendedor | Cota | FolhaComissao
+  entidadeId  String
+  nomeArquivo String
+  tipoMime    String
+  tamanhoBytes Int
+  sha256      String
+  storageKey  String   @unique
+  criadoPorId String?
+  criadoEm    DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@map("anexo")
+}

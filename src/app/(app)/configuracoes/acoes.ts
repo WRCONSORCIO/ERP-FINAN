@@ -26,16 +26,26 @@ export async function simularTabelaAcao(_: Resultado<R.ResultadoSimulacao> | nul
   return executar('regras', 'editar', R.esquemaTabela, formParaObjeto(fd), async (s, d) => ({ mensagem: 'Simulação pronta.', dados: await R.simularTabela(s, d) }));
 }
 export async function abrirConfigEstornoAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaConfigEstorno, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaConfigEstorno(s, d); return { mensagem: 'Nova configuração de estorno vigente.' }; });
+  return executar('regras', 'editar', R.esquemaConfigEstorno, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaConfigEstorno(s, d); return { mensagem: 'Regras de estorno salvas.' }; });
 }
 export async function definirEscopoAcao(_: Estado, fd: FormData) {
   return executar('regras', 'editar', R.esquemaDefinirEscopo, formParaObjeto(fd), async (s, d) => { await R.definirEscopoBase(s, d); return { mensagem: 'Escopo definido. As vendas canceladas pendentes foram para a fila de apuração.' }; });
 }
+/** "Para quem" é um único campo na tela: PADRAO, código de categoria/SUPERVISAO/GERENCIA ou v:<id do vendedor>. */
+function comParaQuem(fd: FormData): Record<string, unknown> {
+  const o = formParaObjeto(fd);
+  const alvo = typeof o.paraQuem === 'string' ? o.paraQuem : '';
+  delete o.paraQuem;
+  if (alvo.startsWith('v:')) o.titularVendedorId = alvo.slice(2);
+  else if (alvo && alvo !== 'PADRAO') o.participante = alvo;
+  return o;
+}
+
 export async function abrirRegraEstornoAcao(_: Estado, fd: FormData) {
-  return executar('regras', 'editar', R.esquemaRegraEstorno, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaRegraEstorno(s, d); return { mensagem: 'Novo percentual de estorno vigente.' }; });
+  return executar('regras', 'editar', R.esquemaRegraEstorno, comParaQuem(fd), async (s, d) => { await R.abrirVigenciaRegraEstorno(s, d); return { mensagem: 'Percentual salvo.' }; });
 }
 export async function simularRegraEstornoAcao(_: Resultado<R.ResultadoSimulacao> | null, fd: FormData): Promise<Resultado<R.ResultadoSimulacao>> {
-  return executar('regras', 'editar', R.esquemaRegraEstorno, formParaObjeto(fd), async (s, d) => ({ mensagem: 'Simulação pronta.', dados: await R.simularRegraEstorno(s, d) }));
+  return executar('regras', 'editar', R.esquemaRegraEstorno, comParaQuem(fd), async (s, d) => ({ mensagem: 'Simulação pronta.', dados: await R.simularRegraEstorno(s, d) }));
 }
 export async function abrirMetaAcao(_: Estado, fd: FormData) {
   return executar('regras', 'editar', R.esquemaMeta, formParaObjeto(fd), async (s, d) => { await R.abrirVigenciaMeta(s, d); return { mensagem: 'Nova meta vigente. Quem já foi promovido não é reclassificado.' }; });

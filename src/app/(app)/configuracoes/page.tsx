@@ -4,7 +4,7 @@ import { somar, dec } from '@/lib/dinheiro';
 import { hoje, vigenteEm } from '@/lib/datas';
 import { pode } from '@/lib/permissoes';
 import { ROTULO_DESTINO, type Destino } from '@/dominio/comissao';
-import { ROTULO_ESCOPO, type EscopoBase } from '@/dominio/estorno';
+import { descreverCriterio, ROTULO_ESCOPO, type Criterio, type EscopoBase } from '@/dominio/estorno';
 import { exigirPagina } from '@/servidor/sessao';
 import { param, type Params } from '@/servidor/consultas/comum';
 import { dadosDeConfiguracao } from '@/servidor/consultas/regras';
@@ -15,7 +15,7 @@ import { FormularioComSimulacao } from '@/ui/formulario-simulacao';
 import {
   abrirConfigEstornoAcao, abrirFlexAcao, abrirMetaAcao, abrirRegraEstornoAcao, abrirTabelaAcao, aliasesFlexAcao, aliasesSegmentoAcao, ativoCategoriaAcao,
   corrigirConfigEstornoAcao, corrigirFlexAcao, corrigirMetaAcao, corrigirRegraEstornoAcao, corrigirTabelaAcao, criarCategoriaAcao, criarSegmentoAcao,
-  definirEscopoAcao, editarCategoriaAcao, editarSegmentoAcao, excluirCategoriaAcao, excluirSegmentoAcao, excluirVigenciaAcao, simularRegraEstornoAcao, simularTabelaAcao,
+  editarCategoriaAcao, editarSegmentoAcao, excluirCategoriaAcao, excluirSegmentoAcao, excluirVigenciaAcao, simularRegraEstornoAcao, simularTabelaAcao,
 } from './acoes';
 import type { EntidadeVigencia } from '@/servidor/servicos/vigencias';
 
@@ -101,9 +101,17 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
   const configSemEscopo = d.configs.filter((c) => c.escopoBase === null);
   const nomeParticipante = (codigo: string) =>
     codigo === 'SUPERVISAO' ? 'Supervisão' : codigo === 'GERENCIA' ? 'Gerência' : (d.categorias.find((c) => c.codigo === codigo)?.nome ?? codigo);
+  const regrasHoje = d.regras.filter((r) => vigenteEm(hoje(), r.vigenteDe, r.vigenteAte));
+  const chavesPercentual = ['PADRAO', ...new Set([...(configAtual?.participantes ?? []), ...regrasHoje.filter((r) => r.participante).map((r) => r.participante as string)]),
+    ...new Set(regrasHoje.filter((r) => r.titularVendedorId).map((r) => `v:${r.titularVendedorId}`))];
+  const quadroPercentuais = chavesPercentual.map((chave) => {
+    const daChave = regrasHoje.filter((r) => (chave === 'PADRAO' ? !r.participante && !r.titularVendedorId : chave.startsWith('v:') ? r.titularVendedorId === chave.slice(2) : r.participante === chave));
+    const nome = chave === 'PADRAO' ? 'Todos (padrão)' : chave.startsWith('v:') ? `Vendedor: ${daChave[0]?.titularVendedor?.nome ?? ''}` : nomeParticipante(chave);
+    return { chave, nome, valores: { CANCELAMENTO: daChave.find((r) => r.tipo === 'CANCELAMENTO')?.percentual ?? null, RECUPERACAO: daChave.find((r) => r.tipo === 'RECUPERACAO')?.percentual ?? null } };
+  });
 
   return (
-    <Pagina titulo="Configurações" descricao="Percentuais, metas, critérios de estorno e categorias são cadastro com vigência. A regra é resolvida pela data do fato. Vigência que ainda não foi usada em nenhum cálculo pode ser corrigida (inclusive a data) ou excluída; depois de usada, a mudança é uma vigência nova.">
+    <Pagina titulo="Configurações" descricao="As regras do dinheiro: comissões, estornos, metas e flex. Cada regra vale a partir de uma data, que pode ser passada; cada venda usa a regra da data dela e o que já foi calculado não muda. Enquanto uma regra não foi usada, dá para corrigir ou excluir.">
       <nav className="flex flex-wrap gap-1 border-b border-wr-borda" aria-label="Abas de configuração">
         {ABAS.map((a) => (
           <Link key={a.id} href={`/configuracoes?aba=${a.id}`} aria-current={aba === a.id ? 'page' : undefined}
@@ -113,7 +121,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
         ))}
       </nav>
       {configSemEscopo.length > 0 ? (
-        <Aviso tom="ambar" titulo="Escopo da base do estorno não definido">A especificação não informa o padrão inicial. Enquanto não for definido, o estorno das vendas canceladas fica em pendência. <Link href="/configuracoes?aba=estornos">Definir em Estornos</Link>.</Aviso>
+        <Aviso tom="ambar" titulo="Falta dizer sobre qual valor o estorno é calculado">Enquanto isso não for escolhido, nenhum estorno é calculado (as vendas canceladas ficam em pendência). <Link href="/configuracoes?aba=estornos">Escolher em Estornos</Link>.</Aviso>
       ) : null}
 
       {aba === 'categorias' ? (
@@ -238,106 +246,152 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
 
       {aba === 'estornos' ? (
         <>
-          <Secao titulo="Quem participa e critério" descricao="Recuperação tem precedência sobre cancelamento. Limite zero desliga o estorno por cancelamento. Participantes são configuração, não código.">
+          <Secao titulo="1. Quando a venda cancelada gera estorno" descricao="As regras em vigor hoje, em linguagem simples.">
             {configAtual ? (
-              <dl className="grid gap-3 text-[13px] sm:grid-cols-4">
-                <div><dt className="rotulo">Participantes</dt><dd className="mt-1 flex flex-wrap gap-1">{configAtual.participantes.map((p) => <Etiqueta key={p}>{p}</Etiqueta>)}</dd></div>
-                <div><dt className="rotulo">Critério de cancelamento</dt><dd className="mt-1">{configAtual.limiteParcelas === 0 ? 'desligado' : `${configAtual.criterioCancelamento === 'IGUAL' ? 'exatamente' : 'abaixo de'} ${configAtual.limiteParcelas} parcela(s) paga(s)`}</dd></div>
-                <div><dt className="rotulo">Escopo da base</dt><dd className="mt-1">{configAtual.escopoBase ? ROTULO_ESCOPO[configAtual.escopoBase as EscopoBase] : <Etiqueta tom="ambar">não definido</Etiqueta>}</dd></div>
-                <div><dt className="rotulo">Vigência</dt><dd className="mt-1"><Vig de={configAtual.vigenteDe} ate={configAtual.vigenteAte} /></dd></div>
-              </dl>
-            ) : <EstadoVazio titulo="Nenhuma configuração de estorno" />}
-            {editar && configSemEscopo.length > 0 ? (
-              <div className="mt-4 space-y-3 border-t border-wr-borda pt-3">
-                {configSemEscopo.map((c) => (
-                  <FormularioAcao key={c.id} acao={definirEscopoAcao} rotulo="Definir escopo" emLinha confirmacao="Completar o escopo indefinido não reescreve nada: com ele indefinido nenhum estorno foi apurado. As vendas canceladas pendentes vão para a fila de apuração.">
-                    <input type="hidden" name="configuracaoId" value={c.id} />
-                    <span className="text-[12px]">Vigência de <DataCurta valor={c.vigenteDe} />:</span>
-                    <select name="escopoBase" aria-label="Escopo da base" className="campo w-64">{(Object.keys(ROTULO_ESCOPO) as EscopoBase[]).map((e) => <option key={e} value={e}>{ROTULO_ESCOPO[e]}</option>)}</select>
-                  </FormularioAcao>
-                ))}
-              </div>
-            ) : null}
-            {d.configs.length > 0 ? (
-              <div className="tabela-quadro mt-4">
-                <table className="tabela">
-                  <thead><tr><th>Vigência</th><th>Participantes</th><th>Critério</th><th>Escopo da base</th>{editar ? <th>Ações</th> : null}</tr></thead>
-                  <tbody>{d.configs.map((c) => (
-                    <tr key={c.id}>
-                      <td><Vig de={c.vigenteDe} ate={c.vigenteAte} /></td>
-                      <td>{c.participantes.map(nomeParticipante).join(', ')}</td>
-                      <td>{c.limiteParcelas === 0 ? 'desligado' : `${c.criterioCancelamento === 'IGUAL' ? 'igual a' : 'abaixo de'} ${c.limiteParcelas}`}</td>
-                      <td>{c.escopoBase ? ROTULO_ESCOPO[c.escopoBase as EscopoBase] : <Etiqueta tom="ambar">não definido</Etiqueta>}</td>
-                      {editar ? (
-                        <td>
-                          <AcoesVigencia entidade="CONFIG_ESTORNO" id={c.id} uso={d.usosVigencia.get(c.id) ?? 0} de={c.vigenteDe} ate={c.vigenteAte} corrigir={corrigirConfigEstornoAcao}>
-                            <fieldset className="text-[13px]"><legend className="rotulo mb-1">Participantes</legend>
-                              {d.categorias.map((cat) => <label key={cat.id} className="mr-3 inline-block"><input type="checkbox" name="participantes" value={cat.codigo} defaultChecked={c.participantes.includes(cat.codigo)} /> {cat.nome}</label>)}
-                              <label className="mr-3 inline-block"><input type="checkbox" name="participantes" value="SUPERVISAO" defaultChecked={c.participantes.includes('SUPERVISAO')} /> Supervisão</label>
-                              <label className="inline-block"><input type="checkbox" name="participantes" value="GERENCIA" defaultChecked={c.participantes.includes('GERENCIA')} /> Gerência</label>
-                            </fieldset>
-                            <div className="grid gap-2 sm:grid-cols-3">
-                              <Campo rotulo="Critério" nome={`crit-${c.id}`}><select id={`crit-${c.id}`} name="criterioCancelamento" defaultValue={c.criterioCancelamento} className="campo"><option value="IGUAL">igual a</option><option value="ABAIXO_DE">abaixo de</option></select></Campo>
-                              <Campo rotulo="Parcelas pagas" nome={`lim-${c.id}`}><input id={`lim-${c.id}`} name="limiteParcelas" type="number" min={0} defaultValue={c.limiteParcelas} className="campo" /></Campo>
-                              <Campo rotulo="Escopo da base" nome={`esc-${c.id}`}><select id={`esc-${c.id}`} name="escopoBase" defaultValue={c.escopoBase ?? ''} className="campo"><option value="">não definido</option>{(Object.keys(ROTULO_ESCOPO) as EscopoBase[]).map((e) => <option key={e} value={e}>{ROTULO_ESCOPO[e]}</option>)}</select></Campo>
-                            </div>
-                          </AcoesVigencia>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            ) : null}
-          </Secao>
-          {editar ? (
-            <Dobra chave="cfg-config-estorno" titulo="Abrir nova vigência de participantes/critério">
-              <div className="p-4">
-                <FormularioAcao acao={abrirConfigEstornoAcao} rotulo="Abrir nova vigência" confirmacao="A configuração atual é encerrada no dia anterior. Estornos já apurados não mudam; recusado se tirar a regra de estorno já apurado.">
-                  <fieldset className="text-[13px]"><legend className="rotulo mb-1">Participantes</legend>
-                    {d.categorias.map((c) => <label key={c.id} className="mr-4"><input type="checkbox" name="participantes" value={c.codigo} defaultChecked={configAtual?.participantes.includes(c.codigo) ?? false} /> {c.nome}</label>)}
-                    <label className="mr-4"><input type="checkbox" name="participantes" value="SUPERVISAO" defaultChecked={configAtual?.participantes.includes('SUPERVISAO') ?? false} /> Supervisão</label>
-                    <label><input type="checkbox" name="participantes" value="GERENCIA" defaultChecked={configAtual?.participantes.includes('GERENCIA') ?? false} /> Gerência</label>
-                  </fieldset>
-                  <div className="grid gap-2 sm:grid-cols-4">
-                    <Campo rotulo="Critério" nome="criterioCancelamento"><select id="criterioCancelamento" name="criterioCancelamento" defaultValue={configAtual?.criterioCancelamento ?? 'IGUAL'} className="campo"><option value="IGUAL">igual a</option><option value="ABAIXO_DE">abaixo de</option></select></Campo>
-                    <Campo rotulo="Parcelas pagas (0 = desliga)" nome="limiteParcelas"><input id="limiteParcelas" name="limiteParcelas" type="number" min={0} defaultValue={configAtual?.limiteParcelas ?? 1} className="campo" /></Campo>
-                    <Campo rotulo="Escopo da base" nome="escopoBase"><select id="escopoBase" name="escopoBase" defaultValue={configAtual?.escopoBase ?? 'PARCELAS_RECEBIDAS'} className="campo">{(Object.keys(ROTULO_ESCOPO) as EscopoBase[]).map((e) => <option key={e} value={e}>{ROTULO_ESCOPO[e]}</option>)}</select></Campo>
-                    <Campo rotulo="Vigente desde" nome="vigenteDe-cfg"><input id="vigenteDe-cfg" name="vigenteDe" type="date" defaultValue={hojeISO} className="campo" /></Campo>
+              <ul className="space-y-2 text-[14px]">
+                <li><strong>Estorno de cancelamento:</strong> {configAtual.limiteParcelas === 0 ? 'desligado.' : <>quando a venda cancelar {descreverCriterio(configAtual.criterioCancelamento as Criterio, configAtual.limiteParcelas)}.</>}</li>
+                <li><strong>Estorno de recuperação:</strong> quando uma venda feita em período de recuperação cancelar {descreverCriterio(configAtual.criterioRecuperacao as Criterio | null, configAtual.limiteRecuperacao)}.</li>
+                <li><strong>Quem devolve:</strong> {configAtual.participantes.length ? configAtual.participantes.map(nomeParticipante).join(', ') : 'ninguém'}.</li>
+                <li><strong>Calculado sobre:</strong> {configAtual.escopoBase ? <>a comissão das {ROTULO_ESCOPO[configAtual.escopoBase as EscopoBase]}.</> : <Etiqueta tom="ambar">ainda não definido — escolha abaixo</Etiqueta>}</li>
+                <li className="text-[12px] text-wr-texto-3">Em vigor desde <DataCurta valor={configAtual.vigenteDe} />{configAtual.vigenteAte ? <> até <DataCurta valor={configAtual.vigenteAte} /></> : null}. Se a venda for de período de recuperação mas não se encaixar na regra de recuperação, vale a regra de cancelamento.</li>
+              </ul>
+            ) : <EstadoVazio titulo="Nenhuma regra de estorno cadastrada" />}
+            {d.configs.filter((c) => c.vigenteDe > hoje()).reverse().map((c) => (
+              <div key={c.id} className="mt-3"><Aviso tom="azul" titulo={`Agendada: a partir de ${c.vigenteDe.toISOString().slice(0, 10).split('-').reverse().join('/')}`}>
+                Cancelamento {c.limiteParcelas === 0 ? 'desligado' : descreverCriterio(c.criterioCancelamento as Criterio, c.limiteParcelas)}; recuperação {descreverCriterio(c.criterioRecuperacao as Criterio | null, c.limiteRecuperacao)}; quem devolve: {c.participantes.map(nomeParticipante).join(', ')}.
+              </Aviso></div>
+            ))}
+            {editar ? (
+              <div className="mt-4 border-t border-wr-borda pt-4">
+                <h3 className="mb-3 text-[13px] font-semibold">Alterar estas regras</h3>
+                <FormularioAcao acao={abrirConfigEstornoAcao} rotulo="Salvar regras" confirmacao="As regras passam a valer a partir da data informada. O que já foi calculado não muda; se a data tirar a regra de um estorno já calculado, o sistema recusa e explica.">
+                  <div className="space-y-3 text-[14px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span><strong>Cancelamento:</strong> gera estorno quando a venda cancelar com</span>
+                      <select name="criterioCancelamento" aria-label="Critério do cancelamento" defaultValue={configAtual?.criterioCancelamento ?? 'IGUAL'} className="campo w-40"><option value="IGUAL">exatamente</option><option value="ABAIXO_DE">menos de</option></select>
+                      <input name="limiteParcelas" aria-label="Parcelas do cancelamento" type="number" min={0} defaultValue={configAtual?.limiteParcelas ?? 1} className="campo w-20" />
+                      <span>parcela(s) paga(s). <span className="text-[12px] text-wr-texto-3">(0 = desligado)</span></span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span><strong>Recuperação:</strong> gera estorno quando a venda do período de recuperação cancelar com</span>
+                      <select name="criterioRecuperacao" aria-label="Critério da recuperação" defaultValue={configAtual?.criterioRecuperacao ?? ''} className="campo w-48"><option value="">qualquer quantidade de</option><option value="ABAIXO_DE">menos de</option><option value="IGUAL">exatamente</option></select>
+                      <input name="limiteRecuperacao" aria-label="Parcelas da recuperação" type="number" min={1} defaultValue={configAtual?.limiteRecuperacao ?? ''} placeholder="nº" className="campo w-20" />
+                      <span>parcela(s) paga(s).</span>
+                    </div>
+                    <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1"><legend className="float-left mr-2"><strong>Quem devolve:</strong></legend>
+                      {d.categorias.map((c) => <label key={c.id} className="inline-flex items-center gap-1"><input type="checkbox" name="participantes" value={c.codigo} defaultChecked={configAtual?.participantes.includes(c.codigo) ?? false} /> {c.nome}</label>)}
+                      <label className="inline-flex items-center gap-1"><input type="checkbox" name="participantes" value="SUPERVISAO" defaultChecked={configAtual?.participantes.includes('SUPERVISAO') ?? false} /> Supervisão</label>
+                      <label className="inline-flex items-center gap-1"><input type="checkbox" name="participantes" value="GERENCIA" defaultChecked={configAtual?.participantes.includes('GERENCIA') ?? false} /> Gerência</label>
+                    </fieldset>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span><strong>Calcular sobre</strong> a comissão das</span>
+                      <select name="escopoBase" aria-label="Base do estorno" defaultValue={configAtual?.escopoBase ?? 'PARCELAS_RECEBIDAS'} className="campo w-60">{(Object.keys(ROTULO_ESCOPO) as EscopoBase[]).map((e) => <option key={e} value={e}>{ROTULO_ESCOPO[e]}</option>)}</select>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span><strong>Valendo a partir de</strong></span>
+                      <input name="vigenteDe" aria-label="Valendo a partir de" type="date" defaultValue={configAtual ? iso(configAtual.vigenteDe) : hojeISO} className="campo w-44" required />
+                      <span className="text-[12px] text-wr-texto-3">Pode ser data passada. Mantendo a data atual ({configAtual ? <DataCurta valor={configAtual.vigenteDe} /> : '—'}), a regra em vigor é substituída enquanto não tiver sido usada.</span>
+                    </div>
                   </div>
                 </FormularioAcao>
               </div>
-            </Dobra>
-          ) : null}
-          <Secao titulo="Percentuais a devolver" descricao="Por tipo, por categoria e por vendedor. Vale o mais específico: exceção do vendedor, depois o percentual da categoria (ou supervisão/gerência), depois o padrão. O percentual é o vigente na data do CANCELAMENTO." semPadding>
+            ) : null}
+          </Secao>
+          <Dobra chave="cfg-hist-config-estorno" titulo={`Histórico das regras de estorno (${d.configs.length})`}>
             <div className="tabela-quadro">
               <table className="tabela">
-                <thead><tr><th>Tipo</th><th>Aplica-se a</th><th className="direita">Percentual</th><th>Vigência</th>{editar ? <th>Ações</th> : null}</tr></thead>
-                <tbody>{d.regras.map((r) => <tr key={r.id}><td>{r.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento'}</td><td>{r.titularVendedor ? <>Vendedor: {r.titularVendedor.nome}</> : r.participante ? nomeParticipante(r.participante) : 'padrão (demais)'}</td><td className="direita"><Percentual valor={r.percentual} /></td><td><Vig de={r.vigenteDe} ate={r.vigenteAte} /></td>
-                  {editar ? (
-                    <td>
-                      <AcoesVigencia entidade="REGRA_ESTORNO" id={r.id} uso={d.usosVigencia.get(r.id) ?? 0} de={r.vigenteDe} ate={r.vigenteAte} corrigir={corrigirRegraEstornoAcao}>
-                        <Campo rotulo="Percentual (%)" nome={`pct-${r.id}`}><input id={`pct-${r.id}`} name="percentual" inputMode="decimal" defaultValue={r.percentual.toString()} className="campo numero" required /></Campo>
-                      </AcoesVigencia>
-                    </td>
-                  ) : null}
-                </tr>)}</tbody>
+                <thead><tr><th>Período</th><th>Cancelamento</th><th>Recuperação</th><th>Quem devolve</th><th>Calculado sobre</th>{editar ? <th>Ações</th> : null}</tr></thead>
+                <tbody>{d.configs.map((c) => (
+                  <tr key={c.id}>
+                    <td><Vig de={c.vigenteDe} ate={c.vigenteAte} /></td>
+                    <td>{c.limiteParcelas === 0 ? 'desligado' : descreverCriterio(c.criterioCancelamento as Criterio, c.limiteParcelas)}</td>
+                    <td>{descreverCriterio(c.criterioRecuperacao as Criterio | null, c.limiteRecuperacao)}</td>
+                    <td>{c.participantes.map(nomeParticipante).join(', ')}</td>
+                    <td>{c.escopoBase ? ROTULO_ESCOPO[c.escopoBase as EscopoBase] : <Etiqueta tom="ambar">não definido</Etiqueta>}</td>
+                    {editar ? (
+                      <td>
+                        <AcoesVigencia entidade="CONFIG_ESTORNO" id={c.id} uso={d.usosVigencia.get(c.id) ?? 0} de={c.vigenteDe} ate={c.vigenteAte} corrigir={corrigirConfigEstornoAcao}>
+                          <fieldset className="text-[13px]"><legend className="rotulo mb-1">Quem devolve</legend>
+                            {d.categorias.map((cat) => <label key={cat.id} className="mr-3 inline-block"><input type="checkbox" name="participantes" value={cat.codigo} defaultChecked={c.participantes.includes(cat.codigo)} /> {cat.nome}</label>)}
+                            <label className="mr-3 inline-block"><input type="checkbox" name="participantes" value="SUPERVISAO" defaultChecked={c.participantes.includes('SUPERVISAO')} /> Supervisão</label>
+                            <label className="inline-block"><input type="checkbox" name="participantes" value="GERENCIA" defaultChecked={c.participantes.includes('GERENCIA')} /> Gerência</label>
+                          </fieldset>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Campo rotulo="Cancelamento: critério" nome={`crit-${c.id}`}><select id={`crit-${c.id}`} name="criterioCancelamento" defaultValue={c.criterioCancelamento} className="campo"><option value="IGUAL">exatamente</option><option value="ABAIXO_DE">menos de</option></select></Campo>
+                            <Campo rotulo="Cancelamento: parcelas pagas (0 = desligado)" nome={`lim-${c.id}`}><input id={`lim-${c.id}`} name="limiteParcelas" type="number" min={0} defaultValue={c.limiteParcelas} className="campo" /></Campo>
+                            <Campo rotulo="Recuperação: critério" nome={`rcrit-${c.id}`}><select id={`rcrit-${c.id}`} name="criterioRecuperacao" defaultValue={c.criterioRecuperacao ?? ''} className="campo"><option value="">qualquer quantidade</option><option value="ABAIXO_DE">menos de</option><option value="IGUAL">exatamente</option></select></Campo>
+                            <Campo rotulo="Recuperação: parcelas pagas" nome={`rlim-${c.id}`}><input id={`rlim-${c.id}`} name="limiteRecuperacao" type="number" min={1} defaultValue={c.limiteRecuperacao ?? ''} className="campo" /></Campo>
+                            <Campo rotulo="Calculado sobre" nome={`esc-${c.id}`}><select id={`esc-${c.id}`} name="escopoBase" defaultValue={c.escopoBase ?? ''} className="campo"><option value="">não definido</option>{(Object.keys(ROTULO_ESCOPO) as EscopoBase[]).map((e) => <option key={e} value={e}>{ROTULO_ESCOPO[e]}</option>)}</select></Campo>
+                          </div>
+                        </AcoesVigencia>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}</tbody>
               </table>
             </div>
+          </Dobra>
+
+          <Secao titulo="2. Quanto cada um devolve" descricao="Percentual da comissão devolvido no estorno, em vigor hoje. Quem não tem percentual próprio usa o padrão. O percentual aplicado é o que valia na data do cancelamento.">
+            <div className="tabela-quadro -mx-4 -mt-4 mb-4">
+              <table className="tabela">
+                <thead><tr><th>Quem</th><th className="direita">Cancelamento</th><th className="direita">Recuperação</th></tr></thead>
+                <tbody>{quadroPercentuais.map((q) => (
+                  <tr key={q.chave}>
+                    <td className={q.chave === 'PADRAO' ? 'font-semibold' : ''}>{q.nome}</td>
+                    {(['CANCELAMENTO', 'RECUPERACAO'] as const).map((t) => {
+                      const proprio = q.valores[t];
+                      const padrao = quadroPercentuais[0]?.valores[t];
+                      return <td key={t} className="direita">{proprio ? <Percentual valor={proprio} /> : padrao ? <span className="text-wr-texto-3">padrão (<Percentual valor={padrao} />)</span> : <Etiqueta tom="ambar">sem percentual</Etiqueta>}</td>;
+                    })}
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            {editar ? (
+              <>
+                <h3 className="mb-3 text-[13px] font-semibold">Definir um percentual</h3>
+                <FormularioComSimulacao salvar={abrirRegraEstornoAcao} simular={simularRegraEstornoAcao} confirmacao="O percentual vale para cancelamentos a partir da data informada. Estornos já calculados não mudam.">
+                  <div className="flex flex-wrap items-center gap-2 text-[14px]">
+                    <select name="paraQuem" aria-label="Para quem" defaultValue="PADRAO" className="campo w-56">
+                      <option value="PADRAO">Todos (padrão)</option>
+                      <optgroup label="Categoria">{d.categorias.map((c) => <option key={c.id} value={c.codigo}>{c.nome}</option>)}<option value="SUPERVISAO">Supervisão</option><option value="GERENCIA">Gerência</option></optgroup>
+                      <optgroup label="Vendedor específico">{d.vendedores.map((v) => <option key={v.id} value={`v:${v.id}`}>{v.nome} · {v.tipoDocumento}</option>)}</optgroup>
+                    </select>
+                    <span>devolve</span>
+                    <input name="percentual" aria-label="Percentual" inputMode="decimal" placeholder="0" className="campo numero w-20" required />
+                    <span>% da comissão no estorno de</span>
+                    <select name="tipo" aria-label="Tipo de estorno" className="campo w-40"><option value="CANCELAMENTO">cancelamento</option><option value="RECUPERACAO">recuperação</option></select>
+                    <span>a partir de</span>
+                    <input name="vigenteDe" aria-label="A partir de" type="date" defaultValue={hojeISO} className="campo w-44" required />
+                  </div>
+                  <p className="text-[12px] text-wr-texto-3">A data pode ser passada: o sistema encaixa o percentual no histórico (termina na véspera do seguinte, se houver). Mesma data de um percentual ainda não usado = substitui.</p>
+                </FormularioComSimulacao>
+              </>
+            ) : null}
           </Secao>
-          {editar ? (
-            <Secao titulo="Abrir nova vigência de percentual">
-              <FormularioComSimulacao salvar={abrirRegraEstornoAcao} simular={simularRegraEstornoAcao} confirmacao="O percentual atual é encerrado no dia anterior e vale só para cancelamentos a partir da data informada.">
-                <div className="grid gap-2 sm:grid-cols-5">
-                  <Campo rotulo="Tipo" nome="tipo"><select id="tipo" name="tipo" className="campo"><option value="CANCELAMENTO">Cancelamento</option><option value="RECUPERACAO">Recuperação</option></select></Campo>
-                  <Campo rotulo="Categoria" nome="participante"><select id="participante" name="participante" defaultValue="" className="campo"><option value="">Padrão (demais)</option>{d.categorias.map((c) => <option key={c.id} value={c.codigo}>{c.nome}</option>)}<option value="SUPERVISAO">Supervisão</option><option value="GERENCIA">Gerência</option></select></Campo>
-                  <Campo rotulo="Vendedor (exceção)" nome="titularVendedorId-e"><select id="titularVendedorId-e" name="titularVendedorId" defaultValue="" className="campo"><option value="">—</option>{d.vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome} · {v.tipoDocumento}</option>)}</select></Campo>
-                  <Campo rotulo="Percentual (%)" nome="percentual"><input id="percentual" name="percentual" inputMode="decimal" className="campo numero" required /></Campo>
-                  <Campo rotulo="Vigente desde" nome="vigenteDe-e"><input id="vigenteDe-e" name="vigenteDe" type="date" defaultValue={hojeISO} className="campo" /></Campo>
-                </div>
-              </FormularioComSimulacao>
-            </Secao>
-          ) : null}
+          <Dobra chave="cfg-hist-regra-estorno" titulo={`Histórico dos percentuais (${d.regras.length})`}>
+            <div className="tabela-quadro">
+              <table className="tabela">
+                <thead><tr><th>Quem</th><th>Tipo</th><th className="direita">Percentual</th><th>Período</th>{editar ? <th>Ações</th> : null}</tr></thead>
+                <tbody>{d.regras.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.titularVendedor ? <>Vendedor: {r.titularVendedor.nome}</> : r.participante ? nomeParticipante(r.participante) : 'Todos (padrão)'}</td>
+                    <td>{r.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento'}</td>
+                    <td className="direita"><Percentual valor={r.percentual} /></td>
+                    <td><Vig de={r.vigenteDe} ate={r.vigenteAte} /></td>
+                    {editar ? (
+                      <td>
+                        <AcoesVigencia entidade="REGRA_ESTORNO" id={r.id} uso={d.usosVigencia.get(r.id) ?? 0} de={r.vigenteDe} ate={r.vigenteAte} corrigir={corrigirRegraEstornoAcao}>
+                          <Campo rotulo="Percentual (%)" nome={`pct-${r.id}`}><input id={`pct-${r.id}`} name="percentual" inputMode="decimal" defaultValue={r.percentual.toString()} className="campo numero" required /></Campo>
+                        </AcoesVigencia>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </Dobra>
         </>
       ) : null}
 

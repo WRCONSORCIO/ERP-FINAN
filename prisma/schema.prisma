@@ -690,6 +690,10 @@ model ConfiguracaoEstorno {
   criterioCancelamento  CriterioCancelamento
   // Limite zero desliga o estorno por cancelamento.
   limiteParcelas        Int
+  // Recuperação: venda feita em período de recuperação e cancelada conforme este critério.
+  // Nulos = qualquer quantidade de parcelas pagas.
+  criterioRecuperacao   CriterioCancelamento?
+  limiteRecuperacao     Int?
   // Nulo = não definido: estorno não é apurado e vira pendência.
   escopoBase            EscopoBaseEstorno?
   vigenteDe             DateTime             @db.Date

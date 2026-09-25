@@ -20,6 +20,12 @@ describe('motor de estorno', () => {
     expect(tipoDeEstorno({ cancelada: true, parcelasPagas: 1, recuperacao: false }, CFG)).toBe('CANCELAMENTO');
     expect(tipoDeEstorno({ cancelada: true, parcelasPagas: 2, recuperacao: false }, CFG)).toBeNull();
     expect(tipoDeEstorno({ cancelada: false, parcelasPagas: 1, recuperacao: true }, CFG)).toBeNull();
+    // Recuperação com critério: menos de 6 pagas
+    const rec = { ...CFG, criterioRecuperacao: 'ABAIXO_DE' as const, limiteRecuperacao: 6 };
+    expect(tipoDeEstorno({ cancelada: true, parcelasPagas: 5, recuperacao: true }, rec)).toBe('RECUPERACAO');
+    expect(tipoDeEstorno({ cancelada: true, parcelasPagas: 6, recuperacao: true }, rec)).toBeNull();
+    // Fora da regra de recuperação, vale a de cancelamento
+    expect(tipoDeEstorno({ cancelada: true, parcelasPagas: 1, recuperacao: true }, { ...rec, limiteRecuperacao: 1 })).toBe('CANCELAMENTO');
   });
   it('critério ABAIXO_DE e limite zero desliga', () => {
     expect(tipoDeEstorno({ cancelada: true, parcelasPagas: 0, recuperacao: false }, { criterio: 'ABAIXO_DE', limiteParcelas: 1 })).toBe('CANCELAMENTO');

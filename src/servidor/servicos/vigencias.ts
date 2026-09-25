@@ -167,6 +167,8 @@ export const esquemaCorrigirConfigEstorno = z.object({
   participantes: zParticipantes,
   criterioCancelamento: z.enum(['IGUAL', 'ABAIXO_DE']),
   limiteParcelas: z.coerce.number().int().min(0).max(999),
+  criterioRecuperacao: z.enum(['IGUAL', 'ABAIXO_DE', '']).optional().transform((v) => (v ? v : null)),
+  limiteRecuperacao: z.string().trim().optional().transform((v) => (v ? Number(v) : null)).refine((v) => v === null || (Number.isInteger(v) && v >= 1 && v <= 999), 'Informe um número de parcelas (1 ou mais)'),
   escopoBase: z.enum(['PARCELAS_RECEBIDAS', 'PRIMEIRA_PARCELA', 'TOTAL_TABELA', '']).optional().transform((v) => (v ? v : null)),
 });
 export const esquemaCorrigirMeta = z.object({
@@ -221,6 +223,7 @@ export async function corrigirConfigEstorno(s: Sessao, d: z.infer<typeof esquema
   exigir(s, 'regras', 'editar');
   validarPeriodo(d.vigenteDe, d.vigenteAte);
   return prisma.$transaction(async (tx) => {
+    if (d.criterioRecuperacao && d.limiteRecuperacao === null) throw new ErroDeDominio('Informe o número de parcelas da regra de recuperação.');
     await exigirSemUso(tx, 'CONFIG_ESTORNO', d.id);
     const antes = await tx.configuracaoEstorno.findUnique({ where: { id: d.id } });
     if (!antes) throw new ErroNaoEncontrado();
@@ -228,7 +231,7 @@ export async function corrigirConfigEstorno(s: Sessao, d: z.infer<typeof esquema
     for (const p of d.participantes) if (p !== 'SUPERVISAO' && p !== 'GERENCIA' && !codigos.has(p)) throw new ErroDeDominio(`Participante desconhecido: ${p}`);
     const depois = await tx.configuracaoEstorno.update({
       where: { id: d.id },
-      data: { participantes: [...new Set(d.participantes)], criterioCancelamento: d.criterioCancelamento, limiteParcelas: d.limiteParcelas, escopoBase: d.escopoBase, vigenteDe: d.vigenteDe, vigenteAte: d.vigenteAte },
+      data: { participantes: [...new Set(d.participantes)], criterioCancelamento: d.criterioCancelamento, limiteParcelas: d.limiteParcelas, criterioRecuperacao: d.criterioRecuperacao, limiteRecuperacao: d.criterioRecuperacao ? d.limiteRecuperacao : null, escopoBase: d.escopoBase, vigenteDe: d.vigenteDe, vigenteAte: d.vigenteAte },
     });
     await registrarCorrecao(tx, s, 'CONFIG_ESTORNO', d.id, antes, depois, d.motivo);
   });

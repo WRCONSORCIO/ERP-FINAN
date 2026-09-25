@@ -313,7 +313,7 @@ async function sincronizarEstornos(
   const configs = await tx.configuracaoEstorno.findMany({ where: { vigenteDe: { lte: dataCanc } } });
   const cfgRow = resolverVigente(configs, dataCanc);
   const config: ConfigEstorno | null = cfgRow
-    ? { id: cfgRow.id, participantes: cfgRow.participantes, criterio: cfgRow.criterioCancelamento, limiteParcelas: cfgRow.limiteParcelas, escopoBase: cfgRow.escopoBase, vigenteDe: cfgRow.vigenteDe, vigenteAte: cfgRow.vigenteAte }
+    ? { id: cfgRow.id, participantes: cfgRow.participantes, criterio: cfgRow.criterioCancelamento, limiteParcelas: cfgRow.limiteParcelas, criterioRecuperacao: cfgRow.criterioRecuperacao, limiteRecuperacao: cfgRow.limiteRecuperacao, escopoBase: cfgRow.escopoBase, vigenteDe: cfgRow.vigenteDe, vigenteAte: cfgRow.vigenteAte }
     : null;
   const tipo = config ? tipoDeEstorno({ cancelada: true, parcelasPagas: cota.parcelasPagas, recuperacao: cota.snapRecuperacao }, config) : null;
 

@@ -2,10 +2,10 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma, type Tx } from '@/lib/db';
 import { aplicarPercentual, dec, formatarMoeda, formatarPercentual, paraTexto, somar, ZERO } from '@/lib/dinheiro';
-import { formatarData, hoje, somarDias } from '@/lib/datas';
+import { diaAnterior, formatarData, hoje, somarDias } from '@/lib/datas';
 import { ErroDeDominio, ErroNaoEncontrado } from '@/lib/erros';
 import { normalizarNome } from '@/lib/texto';
-import { planejarNovaVigencia, type ComVigencia } from '@/dominio/vigencia';
+import type { ComVigencia } from '@/dominio/vigencia';
 import { calcularBase } from '@/dominio/comissao';
 import { CAMPOS_CARTEIRA } from '@/dominio/importacao/layouts';
 import { auditar } from '../auditoria';
@@ -13,6 +13,7 @@ import { CHAVES } from '../configuracao';
 import { exigir, type Sessao } from '../contexto';
 import { enfileirarApuracao } from '../fila';
 import { paraJson } from '../json';
+import { usoDaVigencia, type EntidadeVigencia } from './vigencias';
 import { zBooleano, zData, zId, zIdOpcional, zMoeda, zMotivo, zPercentual, zTexto, zTextoOpcional } from './esquemas';
 
 // ------------------------------------------------------------------ Categorias
@@ -90,22 +91,44 @@ export async function excluirCategoria(s: Sessao, d: { id: string }) {
 // ------------------------------------------------------------------ Vigência genérica
 
 /**
- * Abre uma vigência nova: encerra a atual no dia anterior (nunca sobrescreve) e recusa se a nova
- * data tiraria a regra de um fato já apurado. A EXCLUDE do banco é a última barreira contra sobreposição.
+ * Salva uma regra "valendo a partir de" uma data, em qualquer ponto da linha do tempo:
+ *  - data igual ao início de uma vigência existente e ainda não usada → substitui aquela vigência;
+ *  - data depois de uma vigência → a anterior é encerrada no dia anterior;
+ *  - data antes de uma vigência (inclusive data passada) → a nova termina na véspera da seguinte.
+ * Recusado quando tiraria a regra de fato já apurado (nunca reescreve o passado). A EXCLUDE do banco
+ * é a última barreira contra sobreposição.
  */
 async function abrirVigencia<T extends ComVigencia & { id: string }>(p: {
-  atual: T | null;
+  entidade: EntidadeVigencia;
+  tx: Tx;
+  lista: readonly T[];
   vigenteDe: Date;
-  conflito: (atual: T) => Promise<string | null>;
+  conflito: (anterior: T) => Promise<string | null>;
   encerrar: (id: string, ate: Date) => Promise<unknown>;
-}): Promise<Date | null> {
-  const plano = planejarNovaVigencia(p.atual, p.vigenteDe);
-  if (p.atual && plano.encerrarAtualEm) {
-    const c = await p.conflito(p.atual);
-    if (c) throw new ErroDeDominio(c);
-    await p.encerrar(p.atual.id, plano.encerrarAtualEm);
+  excluir: (id: string) => Promise<unknown>;
+}): Promise<{ anterior: T | null; encerrada: Date | null; vigenteAte: Date | null }> {
+  const t = p.vigenteDe.getTime();
+  const mesma = p.lista.find((v) => v.vigenteDe.getTime() === t);
+  if (mesma) {
+    const uso = await usoDaVigencia(p.tx, p.entidade, mesma.id);
+    if (uso > 0) {
+      throw new ErroDeDominio(
+        `Já existe regra começando em ${formatarData(p.vigenteDe)} e ela já foi usada em ${uso} cálculo(s), então não pode ser trocada. ` +
+          'Informe uma data posterior ao último cálculo para a regra nova valer dali em diante.',
+      );
+    }
+    await p.excluir(mesma.id);
+    return { anterior: mesma, encerrada: null, vigenteAte: mesma.vigenteAte };
   }
-  return plano.encerrarAtualEm;
+  const anterior = [...p.lista].filter((v) => v.vigenteDe.getTime() < t).sort((a, b) => b.vigenteDe.getTime() - a.vigenteDe.getTime())[0] ?? null;
+  const seguinte = [...p.lista].filter((v) => v.vigenteDe.getTime() > t).sort((a, b) => a.vigenteDe.getTime() - b.vigenteDe.getTime())[0] ?? null;
+  if (anterior && (anterior.vigenteAte === null || anterior.vigenteAte.getTime() >= t)) {
+    const c = await p.conflito(anterior);
+    if (c) throw new ErroDeDominio(c);
+    await p.encerrar(anterior.id, diaAnterior(p.vigenteDe));
+    return { anterior, encerrada: diaAnterior(p.vigenteDe), vigenteAte: anterior.vigenteAte };
+  }
+  return { anterior: null, encerrada: null, vigenteAte: seguinte ? diaAnterior(seguinte.vigenteDe) : null };
 }
 
 // ------------------------------------------------------------------ Tabelas de comissão
@@ -151,22 +174,23 @@ export async function abrirVigenciaTabela(s: Sessao, d: EntradaTabela) {
   validarChaveTabela(d);
   const faixas = faixasDaEntrada(d);
   return prisma.$transaction(async (tx) => {
-    const atual = await tx.tabelaComissao.findFirst({ where: chaveTabelaWhere(d), orderBy: { vigenteDe: 'desc' }, include: { faixas: true } });
-    const encerrada = await abrirVigencia({
-      atual, vigenteDe: d.vigenteDe,
+    const lista = await tx.tabelaComissao.findMany({ where: chaveTabelaWhere(d), include: { faixas: true } });
+    const { anterior: atual, encerrada, vigenteAte } = await abrirVigencia({
+      entidade: 'TABELA', tx, lista, vigenteDe: d.vigenteDe,
+      excluir: async (id) => { await tx.faixaComissao.deleteMany({ where: { tabelaId: id } }); await tx.tabelaComissao.delete({ where: { id } }); },
       conflito: async (a) => {
         const c = await tx.comissaoApurada.findFirst({
           where: { tabelaId: a.id, status: { not: 'CANCELADA' }, cota: { dataVenda: { gte: d.vigenteDe } } },
           include: { cota: { select: { dataVenda: true, grupo: true, cota: true } } }, orderBy: { cota: { dataVenda: 'desc' } },
         });
-        return c ? `A venda ${c.cota.grupo}/${c.cota.cota} de ${formatarData(c.cota.dataVenda)} já foi apurada com a tabela atual. A nova vigência precisa começar depois dessa data.` : null;
+        return c ? `A venda ${c.cota.grupo}/${c.cota.cota} de ${formatarData(c.cota.dataVenda)} já foi apurada com a tabela atual. Para não mudar o que já foi calculado, a regra nova precisa começar depois dessa data.` : null;
       },
       encerrar: (id, ate) => tx.tabelaComissao.update({ where: { id }, data: { vigenteAte: ate } }),
     });
     const nova = await tx.tabelaComissao.create({
       data: {
         destino: d.destino, segmentoId: d.segmentoId, categoriaId: d.categoriaId, titularVendedorId: d.titularVendedorId, titularPessoaId: d.titularPessoaId,
-        vigenteDe: d.vigenteDe, observacao: d.observacao, criadoPorId: s.usuarioId, faixas: { create: faixas },
+        vigenteDe: d.vigenteDe, vigenteAte, observacao: d.observacao, criadoPorId: s.usuarioId, faixas: { create: faixas },
       },
       include: { faixas: true },
     });
@@ -241,6 +265,9 @@ export const esquemaConfigEstorno = z.object({
   participantes: zParticipantes,
   criterioCancelamento: z.enum(['IGUAL', 'ABAIXO_DE']),
   limiteParcelas: z.coerce.number().int().min(0).max(999),
+  /** Vazio = recuperação com qualquer quantidade de parcelas pagas. */
+  criterioRecuperacao: z.enum(['IGUAL', 'ABAIXO_DE', '']).optional().transform((v) => (v ? v : null)),
+  limiteRecuperacao: z.string().trim().optional().transform((v) => (v ? Number(v) : null)).refine((v) => v === null || (Number.isInteger(v) && v >= 1 && v <= 999), 'Informe um número de parcelas (1 ou mais)'),
   escopoBase: z.enum(['PARCELAS_RECEBIDAS', 'PRIMEIRA_PARCELA', 'TOTAL_TABELA']),
   vigenteDe: zData,
 });
@@ -270,18 +297,24 @@ async function reapurarCanceladasComPendencia(tx: Tx, motivo: string) {
 export async function abrirVigenciaConfigEstorno(s: Sessao, d: z.infer<typeof esquemaConfigEstorno>) {
   exigir(s, 'regras', 'editar');
   return prisma.$transaction(async (tx) => {
+    if (d.criterioRecuperacao && d.limiteRecuperacao === null) throw new ErroDeDominio('Informe o número de parcelas da regra de recuperação.');
     const participantes = await participantesValidos(tx, d.participantes);
-    const atual = await tx.configuracaoEstorno.findFirst({ orderBy: { vigenteDe: 'desc' } });
-    const encerrada = await abrirVigencia({
-      atual, vigenteDe: d.vigenteDe,
+    const lista = await tx.configuracaoEstorno.findMany();
+    const { anterior: atual, encerrada, vigenteAte } = await abrirVigencia({
+      entidade: 'CONFIG_ESTORNO', tx, lista, vigenteDe: d.vigenteDe,
+      excluir: (id) => tx.configuracaoEstorno.delete({ where: { id } }),
       conflito: async (a) => {
         const e = await tx.estorno.findFirst({ where: { configuracaoId: a.id, status: { not: 'INVALIDADO' }, dataEvento: { gte: d.vigenteDe } }, orderBy: { dataEvento: 'desc' } });
-        return e ? `Já há estorno apurado com a configuração atual para cancelamento em ${formatarData(e.dataEvento)}. A nova vigência precisa começar depois dessa data.` : null;
+        return e ? `Já há estorno apurado com a configuração atual para cancelamento em ${formatarData(e.dataEvento)}. Para não mudar o que já foi calculado, a regra nova precisa começar depois dessa data.` : null;
       },
       encerrar: (id, ate) => tx.configuracaoEstorno.update({ where: { id }, data: { vigenteAte: ate } }),
     });
     const nova = await tx.configuracaoEstorno.create({
-      data: { participantes, criterioCancelamento: d.criterioCancelamento, limiteParcelas: d.limiteParcelas, escopoBase: d.escopoBase, vigenteDe: d.vigenteDe, criadoPorId: s.usuarioId },
+      data: {
+        participantes, criterioCancelamento: d.criterioCancelamento, limiteParcelas: d.limiteParcelas,
+        criterioRecuperacao: d.criterioRecuperacao, limiteRecuperacao: d.criterioRecuperacao ? d.limiteRecuperacao : null,
+        escopoBase: d.escopoBase, vigenteDe: d.vigenteDe, vigenteAte, criadoPorId: s.usuarioId,
+      },
     });
     await auditar(tx, { sessao: s, acao: 'ALTERACAO_REGRA', entidade: 'ConfiguracaoEstorno', entidadeId: nova.id, antes: atual ? { ...atual, vigenteAte: encerrada ?? atual.vigenteAte } : null, depois: nova });
     await reapurarCanceladasComPendencia(tx, 'nova configuração de estorno');
@@ -310,16 +343,17 @@ export async function abrirVigenciaRegraEstorno(s: Sessao, d: z.infer<typeof esq
   if (d.participante && d.titularVendedorId) throw new ErroDeDominio('Escolha a categoria OU o vendedor da exceção, não os dois.');
   return prisma.$transaction(async (tx) => {
     if (d.participante) await participantesValidos(tx, [d.participante]);
-    const atual = await tx.regraEstorno.findFirst({ where: { tipo: d.tipo, participante: d.participante, titularVendedorId: d.titularVendedorId }, orderBy: { vigenteDe: 'desc' } });
-    const encerrada = await abrirVigencia({
-      atual, vigenteDe: d.vigenteDe,
+    const lista = await tx.regraEstorno.findMany({ where: { tipo: d.tipo, participante: d.participante, titularVendedorId: d.titularVendedorId } });
+    const { anterior: atual, encerrada, vigenteAte } = await abrirVigencia({
+      entidade: 'REGRA_ESTORNO', tx, lista, vigenteDe: d.vigenteDe,
+      excluir: (id) => tx.regraEstorno.delete({ where: { id } }),
       conflito: async (a) => {
         const e = await tx.estorno.findFirst({ where: { regraId: a.id, status: { not: 'INVALIDADO' }, dataEvento: { gte: d.vigenteDe } }, orderBy: { dataEvento: 'desc' } });
-        return e ? `Já há estorno apurado com o percentual atual para cancelamento em ${formatarData(e.dataEvento)}. A nova vigência precisa começar depois dessa data.` : null;
+        return e ? `Já há estorno apurado com o percentual atual para cancelamento em ${formatarData(e.dataEvento)}. Para não mudar o que já foi calculado, a regra nova precisa começar depois dessa data.` : null;
       },
       encerrar: (id, ate) => tx.regraEstorno.update({ where: { id }, data: { vigenteAte: ate } }),
     });
-    const nova = await tx.regraEstorno.create({ data: { tipo: d.tipo, participante: d.participante, titularVendedorId: d.titularVendedorId, percentual: d.percentual, vigenteDe: d.vigenteDe, criadoPorId: s.usuarioId } });
+    const nova = await tx.regraEstorno.create({ data: { tipo: d.tipo, participante: d.participante, titularVendedorId: d.titularVendedorId, percentual: d.percentual, vigenteDe: d.vigenteDe, vigenteAte, criadoPorId: s.usuarioId } });
     await auditar(tx, { sessao: s, acao: 'ALTERACAO_REGRA', entidade: 'RegraEstorno', entidadeId: nova.id, antes: atual ? { ...atual, vigenteAte: encerrada ?? atual.vigenteAte } : null, depois: nova });
     await reapurarCanceladasComPendencia(tx, 'nova regra de estorno');
     return nova;
@@ -338,12 +372,13 @@ export async function abrirVigenciaMeta(s: Sessao, d: z.infer<typeof esquemaMeta
   exigir(s, 'regras', 'editar');
   if (!dec(d.volumeMinimo).isPositive()) throw new ErroDeDominio('Volume mínimo precisa ser maior que zero.');
   return prisma.$transaction(async (tx) => {
-    const atual = await tx.metaPromocao.findFirst({ where: { categoriaOrigemId: d.categoriaOrigemId }, orderBy: { vigenteDe: 'desc' } });
-    const encerrada = await abrirVigencia({
-      atual, vigenteDe: d.vigenteDe, conflito: async () => null,
+    const lista = await tx.metaPromocao.findMany({ where: { categoriaOrigemId: d.categoriaOrigemId } });
+    const { anterior: atual, encerrada, vigenteAte } = await abrirVigencia({
+      entidade: 'META', tx, lista, vigenteDe: d.vigenteDe, conflito: async () => null,
+      excluir: (id) => tx.metaPromocao.delete({ where: { id } }),
       encerrar: (id, ate) => tx.metaPromocao.update({ where: { id }, data: { vigenteAte: ate } }),
     });
-    const nova = await tx.metaPromocao.create({ data: { ...d, criadoPorId: s.usuarioId } });
+    const nova = await tx.metaPromocao.create({ data: { ...d, vigenteAte, criadoPorId: s.usuarioId } });
     await auditar(tx, { sessao: s, acao: 'ALTERACAO_REGRA', entidade: 'MetaPromocao', entidadeId: nova.id, antes: atual ? { ...atual, vigenteAte: encerrada ?? atual.vigenteAte } : null, depois: nova });
     return nova;
   });
@@ -360,16 +395,17 @@ export async function abrirVigenciaFlex(s: Sessao, d: z.infer<typeof esquemaFlex
   exigir(s, 'regras', 'editar');
   if (dec(d.percentual).isZero()) throw new ErroDeDominio('Percentual do flex precisa ser maior que zero.');
   return prisma.$transaction(async (tx) => {
-    const atual = await tx.modalidadeFlex.findFirst({ where: { codigo: d.codigo }, orderBy: { vigenteDe: 'desc' } });
-    const encerrada = await abrirVigencia({
-      atual, vigenteDe: d.vigenteDe,
+    const lista = await tx.modalidadeFlex.findMany({ where: { codigo: d.codigo } });
+    const { anterior: atual, encerrada, vigenteAte } = await abrirVigencia({
+      entidade: 'FLEX', tx, lista, vigenteDe: d.vigenteDe,
+      excluir: (id) => tx.modalidadeFlex.delete({ where: { id } }),
       conflito: async (a) => {
         const c = await tx.cota.findFirst({ where: { snapModalidadeFlexId: a.id, dataVenda: { gte: d.vigenteDe } }, orderBy: { dataVenda: 'desc' } });
-        return c ? `A venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)} já está congelada com este flex. A nova vigência precisa começar depois dessa data.` : null;
+        return c ? `A venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)} já está congelada com este flex. Para não mudar o que já foi calculado, a regra nova precisa começar depois dessa data.` : null;
       },
       encerrar: (id, ate) => tx.modalidadeFlex.update({ where: { id }, data: { vigenteAte: ate } }),
     });
-    const nova = await tx.modalidadeFlex.create({ data: { ...d, aliases: d.aliases.map(normalizarNome), criadoPorId: s.usuarioId } });
+    const nova = await tx.modalidadeFlex.create({ data: { ...d, vigenteAte, aliases: d.aliases.map(normalizarNome), criadoPorId: s.usuarioId } });
     await auditar(tx, { sessao: s, acao: 'ALTERACAO_REGRA', entidade: 'ModalidadeFlex', entidadeId: nova.id, antes: atual ? { ...atual, vigenteAte: encerrada ?? atual.vigenteAte } : null, depois: nova });
     return nova;
   });

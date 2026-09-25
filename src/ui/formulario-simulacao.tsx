@@ -14,10 +14,10 @@ function Botoes({ confirmando, setConfirmando, simular, pending }: { confirmando
     <div className="flex flex-wrap gap-2">
       <button type="button" onClick={simular} disabled={pending} className={classeBotao('secundario')}>{pending ? 'Calculando…' : 'Simular impacto'}</button>
       {!confirmando ? (
-        <button type="button" onClick={() => setConfirmando(true)} className={classeBotao('primario')}>Abrir nova vigência</button>
+        <button type="button" onClick={() => setConfirmando(true)} className={classeBotao('primario')}>Salvar</button>
       ) : (
         <>
-          <button type="submit" disabled={pending} className={classeBotao('perigo')}>{pending ? 'Gravando…' : 'Confirmar nova vigência'}</button>
+          <button type="submit" disabled={pending} className={classeBotao('perigo')}>{pending ? 'Gravando…' : 'Confirmar'}</button>
           <button type="button" onClick={() => setConfirmando(false)} className={classeBotao('fantasma')}>Cancelar</button>
         </>
       )}

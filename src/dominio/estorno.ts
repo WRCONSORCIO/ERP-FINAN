@@ -17,6 +17,9 @@ export interface ConfigEstorno {
   participantes: readonly string[];
   criterio: Criterio;
   limiteParcelas: number;
+  /** Recuperação: critério de parcelas pagas. Nulos = qualquer quantidade. */
+  criterioRecuperacao?: Criterio | null;
+  limiteRecuperacao?: number | null;
   escopoBase: EscopoBase | null;
   vigenteDe: Date;
   vigenteAte: Date | null;
@@ -32,16 +35,32 @@ export interface RegraEstornoResolvida {
   vigenteAte: Date | null;
 }
 
-/** Recuperação tem precedência; cancelamento depende do critério; limite zero desliga o cancelamento. */
+/** Aplica um critério de parcelas pagas: IGUAL (exatamente N) ou ABAIXO_DE (menos de N). */
+export function casaCriterio(parcelasPagas: number, criterio: Criterio, limite: number): boolean {
+  return criterio === 'IGUAL' ? parcelasPagas === limite : parcelasPagas < limite;
+}
+
+/** Descrição em português de um critério, para tela e memória de cálculo. */
+export function descreverCriterio(criterio: Criterio | null | undefined, limite: number | null | undefined): string {
+  if (!criterio || limite === null || limite === undefined) return 'com qualquer quantidade de parcelas pagas';
+  return criterio === 'IGUAL' ? `com exatamente ${limite} parcela(s) paga(s)` : `com menos de ${limite} parcela(s) paga(s)`;
+}
+
+/**
+ * Recuperação tem precedência quando a venda é de período de recuperação E casa o critério dela
+ * (sem critério = qualquer quantidade). Senão, cancelamento pelo critério dele; limite zero desliga.
+ */
 export function tipoDeEstorno(
   cota: { cancelada: boolean; parcelasPagas: number; recuperacao: boolean },
-  config: Pick<ConfigEstorno, 'criterio' | 'limiteParcelas'>,
+  config: Pick<ConfigEstorno, 'criterio' | 'limiteParcelas' | 'criterioRecuperacao' | 'limiteRecuperacao'>,
 ): TipoEstorno | null {
   if (!cota.cancelada) return null;
-  if (cota.recuperacao) return 'RECUPERACAO';
+  if (cota.recuperacao) {
+    const semCriterio = !config.criterioRecuperacao || config.limiteRecuperacao === null || config.limiteRecuperacao === undefined;
+    if (semCriterio || casaCriterio(cota.parcelasPagas, config.criterioRecuperacao!, config.limiteRecuperacao!)) return 'RECUPERACAO';
+  }
   if (config.limiteParcelas <= 0) return null;
-  if (config.criterio === 'IGUAL') return cota.parcelasPagas === config.limiteParcelas ? 'CANCELAMENTO' : null;
-  return cota.parcelasPagas < config.limiteParcelas ? 'CANCELAMENTO' : null;
+  return casaCriterio(cota.parcelasPagas, config.criterio, config.limiteParcelas) ? 'CANCELAMENTO' : null;
 }
 
 /** Comissão que serve de base ao estorno, conforme o escopo configurado. */
@@ -145,8 +164,8 @@ export function calcularEstornos(e: EntradaEstorno): { linhas: LinhaEstorno[]; p
         formula: `${formatarMoeda(comissaoBase)} (comissão base: ${ROTULO_ESCOPO[e.config.escopoBase]}) × ${formatarPercentual(d.regra.percentual)} (${tipo === 'RECUPERACAO' ? 'recuperação' : 'cancelamento'}) = ${formatarMoeda(valor)}`,
         tipo,
         motivoDoTipo: tipo === 'RECUPERACAO'
-          ? 'Venda marcada como feita em período de recuperação (precedência sobre a contagem de parcelas)'
-          : `Cancelamento com ${e.cota.parcelasPagas} parcela(s) paga(s) — critério ${e.config.criterio === 'IGUAL' ? 'igual a' : 'abaixo de'} ${e.config.limiteParcelas}`,
+          ? `Venda feita em período de recuperação, cancelada com ${e.cota.parcelasPagas} parcela(s) paga(s) — regra: ${descreverCriterio(e.config.criterioRecuperacao, e.config.limiteRecuperacao)}`
+          : `Cancelamento com ${e.cota.parcelasPagas} parcela(s) paga(s) — regra: ${descreverCriterio(e.config.criterio, e.config.limiteParcelas)}`,
         parcelasPagas: e.cota.parcelasPagas,
         escopoBase: e.config.escopoBase,
         comissoesUsadas: parcelasUsadas,

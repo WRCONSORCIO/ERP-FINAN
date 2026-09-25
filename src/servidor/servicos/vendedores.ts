@@ -5,7 +5,7 @@ import { diaAnterior, formatarData } from '@/lib/datas';
 import { ErroDeDominio, ErroNaoEncontrado } from '@/lib/erros';
 import { documentoValido, somenteDigitos } from '@/lib/documento';
 import { normalizarNome } from '@/lib/texto';
-import { planejarNovaVigencia } from '@/dominio/vigencia';
+import { planejarNaLinhaDoTempo } from '@/dominio/vigencia';
 import { auditar } from '../auditoria';
 import { exigir, type Sessao } from '../contexto';
 import { enfileirarApuracao } from '../fila';
@@ -125,28 +125,34 @@ export async function alterarCategoria(s: Sessao, d: z.infer<typeof esquemaAlter
   return prisma.$transaction(async (tx) => {
     const v = await exigirVendedor(tx, d.vendedorId);
     const nova = await exigirCategoriaParaDocumento(tx, d.categoriaId, v.tipoDocumento);
-    const atual = await tx.vendedorCategoria.findFirst({ where: { vendedorId: v.id }, orderBy: { vigenteDe: 'desc' }, include: { categoria: true } });
-    if (atual && atual.categoriaId === d.categoriaId && (atual.vigenteAte === null || atual.vigenteAte >= d.vigenteDe)) {
-      throw new ErroDeDominio(`O documento já é ${nova.nome} nesta data.`);
+    const lista = await tx.vendedorCategoria.findMany({ where: { vendedorId: v.id }, include: { categoria: true } });
+    const plano = planejarNaLinhaDoTempo(lista, d.vigenteDe);
+    if (plano.mesma) throw new ErroDeDominio(`Já existe a categoria ${plano.mesma.categoria.nome} começando em ${formatarData(d.vigenteDe)}. Para trocar, use "Corrigir" no histórico de categoria ou escolha outra data.`);
+    const atual = plano.anterior;
+    if (atual && atual.categoriaId === d.categoriaId) throw new ErroDeDominio(`O documento já é ${nova.nome} nesta data.`);
+    if (plano.seguinte && plano.seguinte.categoriaId === d.categoriaId) {
+      // Mesma categoria logo depois: é só antecipar o início dela (o intervalo não tinha categoria).
+      const depois = await tx.vendedorCategoria.update({ where: { id: plano.seguinte.id }, data: { vigenteDe: d.vigenteDe } });
+      await auditar(tx, { sessao: s, acao: 'ALTERACAO_CATEGORIA', entidade: 'VendedorCategoria', entidadeId: depois.id, antes: { vigenteDe: plano.seguinte.vigenteDe }, depois: { vigenteDe: d.vigenteDe }, contexto: { operacao: 'antecipação do início', motivo: d.motivo } });
+      return;
     }
-    const plano = planejarNovaVigencia(atual, d.vigenteDe);
-    if (atual && plano.encerrarAtualEm) {
+    if (atual && plano.encerrarAnteriorEm) {
       const conflito = await vendasApuradasDesde(tx, { vendedorId: v.id, campo: 'snapCategoriaId', valor: atual.categoriaId, desde: d.vigenteDe });
       if (conflito) {
         throw new ErroDeDominio(
-          `A venda do grupo ${conflito.grupo}/${conflito.cota} em ${formatarData(conflito.dataVenda)} já foi apurada como ${atual.categoria.nome}. ` +
-          `A nova categoria precisa começar depois de ${formatarData(conflito.dataVenda)} — alterar a categoria não reescreve venda apurada.`,
+          `A venda do grupo ${conflito.grupo}/${conflito.cota} em ${formatarData(conflito.dataVenda)} já foi calculada como ${atual.categoria.nome}. ` +
+          `Para não mudar o que já foi calculado, a nova categoria precisa começar depois de ${formatarData(conflito.dataVenda)}.`,
         );
       }
-      await tx.vendedorCategoria.update({ where: { id: atual.id }, data: { vigenteAte: plano.encerrarAtualEm } });
+      await tx.vendedorCategoria.update({ where: { id: atual.id }, data: { vigenteAte: plano.encerrarAnteriorEm } });
     }
     const criada = await tx.vendedorCategoria.create({
-      data: { vendedorId: v.id, categoriaId: d.categoriaId, vigenteDe: d.vigenteDe, promocao: d.promocao, motivo: d.motivo, criadoPorId: s.usuarioId },
+      data: { vendedorId: v.id, categoriaId: d.categoriaId, vigenteDe: d.vigenteDe, vigenteAte: plano.vigenteAte, promocao: d.promocao, motivo: d.motivo, criadoPorId: s.usuarioId },
     });
     await auditar(tx, {
       sessao: s, acao: d.promocao ? 'PROMOCAO' : 'ALTERACAO_CATEGORIA', entidade: 'Vendedor', entidadeId: v.id,
       antes: atual ? { categoria: atual.categoria.codigo, vigenteDe: atual.vigenteDe, vigenteAte: atual.vigenteAte } : null,
-      depois: { categoria: nova.codigo, vigenteDe: criada.vigenteDe, encerradaAnteriorEm: plano.encerrarAtualEm }, contexto: { motivo: d.motivo },
+      depois: { categoria: nova.codigo, vigenteDe: criada.vigenteDe, vigenteAte: criada.vigenteAte, encerradaAnteriorEm: plano.encerrarAnteriorEm }, contexto: { motivo: d.motivo },
     });
   });
 }
@@ -198,17 +204,24 @@ export async function alterarAlocacao(s: Sessao, d: z.infer<typeof esquemaAltera
     const v = await exigirVendedor(tx, d.vendedorId);
     const equipe = await tx.equipe.findUnique({ where: { id: d.equipeId }, include: { gerencia: true } });
     if (!equipe || equipe.status !== 'ATIVO') throw new ErroDeDominio('Equipe inexistente ou inativa.');
-    const atual = await tx.vendedorAlocacao.findFirst({ where: { vendedorId: v.id }, orderBy: { vigenteDe: 'desc' }, include: { equipe: true } });
-    if (atual && atual.equipeId === d.equipeId && atual.vigenteAte === null) throw new ErroDeDominio('O documento já está nesta equipe.');
-    const plano = planejarNovaVigencia(atual, d.vigenteDe);
-    if (atual && plano.encerrarAtualEm) {
+    const lista = await tx.vendedorAlocacao.findMany({ where: { vendedorId: v.id }, include: { equipe: true } });
+    const plano = planejarNaLinhaDoTempo(lista, d.vigenteDe);
+    if (plano.mesma) throw new ErroDeDominio(`Já existe a equipe ${plano.mesma.equipe.nome} começando em ${formatarData(d.vigenteDe)}. Escolha outra data.`);
+    const atual = plano.anterior;
+    if (atual && atual.equipeId === d.equipeId) throw new ErroDeDominio('O documento já está nesta equipe nesta data.');
+    if (plano.seguinte && plano.seguinte.equipeId === d.equipeId) {
+      const depois = await tx.vendedorAlocacao.update({ where: { id: plano.seguinte.id }, data: { vigenteDe: d.vigenteDe } });
+      await auditar(tx, { sessao: s, acao: 'ALTERACAO_ALOCACAO', entidade: 'VendedorAlocacao', entidadeId: depois.id, antes: { vigenteDe: plano.seguinte.vigenteDe }, depois: { vigenteDe: d.vigenteDe }, contexto: { operacao: 'antecipação do início', motivo: d.motivo } });
+      return;
+    }
+    if (atual && plano.encerrarAnteriorEm) {
       const c = await vendasApuradasDesde(tx, { vendedorId: v.id, campo: 'snapEquipeId', valor: atual.equipeId, desde: d.vigenteDe });
       if (c) {
-        throw new ErroDeDominio(`A venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)} já foi apurada na equipe ${atual.equipe.nome}. A nova alocação precisa começar depois dessa data.`);
+        throw new ErroDeDominio(`A venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)} já foi calculada na equipe ${atual.equipe.nome}. Para não mudar o que já foi calculado, a nova equipe precisa começar depois dessa data.`);
       }
-      await tx.vendedorAlocacao.update({ where: { id: atual.id }, data: { vigenteAte: plano.encerrarAtualEm } });
+      await tx.vendedorAlocacao.update({ where: { id: atual.id }, data: { vigenteAte: plano.encerrarAnteriorEm } });
     }
-    const nova = await tx.vendedorAlocacao.create({ data: { vendedorId: v.id, equipeId: d.equipeId, vigenteDe: d.vigenteDe, motivo: d.motivo, criadoPorId: s.usuarioId } });
+    const nova = await tx.vendedorAlocacao.create({ data: { vendedorId: v.id, equipeId: d.equipeId, vigenteDe: d.vigenteDe, vigenteAte: plano.vigenteAte, motivo: d.motivo, criadoPorId: s.usuarioId } });
     await auditar(tx, {
       sessao: s, acao: 'ALTERACAO_ALOCACAO', entidade: 'Vendedor', entidadeId: v.id,
       antes: atual ? { equipe: atual.equipe.nome, vigenteDe: atual.vigenteDe } : null,

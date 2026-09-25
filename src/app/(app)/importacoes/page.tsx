@@ -11,32 +11,14 @@ import { painelImportacoes } from '@/servidor/consultas/importacoes';
 import { Campo, EstadoVazio, Etiqueta, Pagina, Secao } from '@/ui/base';
 import { Dobra } from '@/ui/dobra';
 import { FormularioAcao } from '@/ui/formulario-acao';
-import { ProcessoEmLotes } from '@/ui/processo-em-lotes';
+import { EnviarEProcessar, ProcessarTudo } from '@/ui/processar-tudo';
 import { CONSERTO_PENDENCIA, ROTULO_PENDENCIA } from '@/ui/rotulos';
 import {
-  aplicarPendentesAcao, apurarFilaAcao, receberArquivoAcao, recongelarTodasAcao, reprocessarErrosAcao, salvarLayoutCarteiraAcao, salvarLayoutPdfAcao,
+  processarEtapaAcao, receberArquivoAcao, reprocessarErrosAcao, salvarLayoutCarteiraAcao, salvarLayoutPdfAcao,
 } from './acoes';
 
 export const metadata: Metadata = { title: 'Importações' };
 export const dynamic = 'force-dynamic';
-
-function Operacao({ titulo, numero, rotulo, children, como }: { titulo: string; numero: number; rotulo: string; children: React.ReactNode; como: React.ReactNode }) {
-  const zero = numero === 0;
-  return (
-    <div className={`cartao flex flex-col gap-3 border-l-4 p-4 ${zero ? 'border-l-wr-verde' : 'border-l-wr-ambar'}`}>
-      <div>
-        <p className="rotulo">{titulo}</p>
-        <p className={`numero mt-1 text-[28px] font-bold leading-none ${zero ? 'text-wr-verde' : 'text-wr-ambar'}`}>{numero.toLocaleString('pt-BR')}</p>
-        <p className="mt-1 text-[12px] text-wr-texto-2">{rotulo}</p>
-      </div>
-      <div>{children}</div>
-      <details className="text-[12px] text-wr-texto-2">
-        <summary className="cursor-pointer font-semibold text-wr-texto">Como funciona</summary>
-        <div className="mt-1 space-y-1">{como}</div>
-      </details>
-    </div>
-  );
-}
 
 export default async function Importacoes({ searchParams }: { searchParams: Promise<Params> }) {
   const s = await exigirPagina('importacoes');
@@ -46,38 +28,10 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
   const faltaLinhas = d.faltaAplicar.reduce((t, i) => t + i._count.linhas, 0);
 
   return (
-    <Pagina titulo="Importações" descricao="Os quatro arquivos que a administradora libera. O tipo é reconhecido pelo conteúdo, não pelo nome. Reimportar é inofensivo; nada some em silêncio.">
-      <div className="grid gap-3 lg:grid-cols-3">
-        <Operacao titulo="Falta aplicar" numero={faltaLinhas} rotulo={`linha(s) em ${d.faltaAplicar.length} importação(ões) interrompida(s) ou recém-enviada(s)`}
-          como={<><p>O arquivo é lido e guardado de uma vez; a aplicação é feita em lotes curtos (cada lote cabe no tempo de uma requisição), retomando de onde parou.</p><p>Pode interromper e retomar: nenhuma linha é aplicada duas vezes.</p></>}>
-          {d.faltaAplicar.length > 0 ? (
-            <ul className="mb-2 space-y-1">
-              {d.faltaAplicar.map((i) => (
-                <li key={i.id} className="text-[12px]"><strong>{i.nomeArquivo}</strong> · {ROTULO_TIPO_ARQUIVO[i.tipo]} · <span className="numero">{i._count.linhas}</span> pendente(s)</li>
-              ))}
-            </ul>
-          ) : null}
-          {editar ? <ProcessoEmLotes acao={aplicarPendentesAcao} rotulo="Aplicar pendentes" /> : null}
-        </Operacao>
-        <Operacao titulo="Fila de recálculo" numero={d.filaPendente} rotulo={`venda(s) aguardando apuração${d.filaErro.length > 0 ? ` · ${d.filaErro.length} com erro` : ''}`}
-          como={<><p>Todo pedido de apuração é gravado junto com a venda, na mesma transação: nenhuma venda entra sem que a apuração seja pedida.</p><p>Uma falha não interrompe o restante do lote; a venda que falhou é tentada de novo depois de uma espera (1, 2, 4, 8 min) e vira erro após 5 tentativas.</p></>}>
-          {editar ? <ProcessoEmLotes acao={apurarFilaAcao} rotulo="Apurar tudo" /> : null}
-          {d.filaErro.length > 0 ? (
-            <div className="mt-2 space-y-1 text-[12px]">
-              {d.filaErro.slice(0, 5).map((e) => <p key={e.id} className="text-wr-vermelho">{e.cota ? <Link href={`/clientes/${e.cotaId}`}>{e.cota.grupo}/{e.cota.cota}</Link> : '—'}: {e.ultimoErro?.slice(0, 140)}</p>)}
-              {editar ? <FormularioAcao acao={reprocessarErrosAcao} rotulo="Recolocar erros na fila" /> : null}
-            </div>
-          ) : null}
-        </Operacao>
-        <Operacao titulo="Sem categoria ou sem estrutura" numero={d.semEstrutura} rotulo="venda(s) com snapshot incompleto — não geram (toda) a comissão"
-          como={<><p>Recongelar resolve o snapshot pelo cadastro de HOJE, mas na data ORIGINAL da venda. Só as vendas com pendência de cadastro ou estrutura são tocadas.</p><p>Antes, conserte o cadastro (veja o diagnóstico abaixo).</p></>}>
-          {editar ? <ProcessoEmLotes acao={recongelarTodasAcao} rotulo="Recongelar todas" confirmacao="Recongela o snapshot das vendas pendentes pelo cadastro atual, na data da venda. As que mudarem vão para a fila de apuração." /> : null}
-        </Operacao>
-      </div>
-
+    <Pagina titulo="Importações" descricao="Envie aqui os arquivos da administradora. O sistema reconhece o tipo sozinho, grava as vendas e calcula comissões e estornos. Enviar o mesmo arquivo de novo não duplica nada.">
       {editar ? (
-        <Secao titulo="Enviar arquivo" descricao="Base de clientes (CSV Latin-1, separado por ;) ou relatórios CV056E, CV069E e GC070A (PDF). Cada arquivo é conferido contra o total impresso no próprio rodapé.">
-          <FormularioAcao acao={receberArquivoAcao} rotulo="Enviar e ler">
+        <Secao titulo="Enviar arquivo" descricao="Base de clientes (planilha CSV) ou relatórios CV056E, CV069E e GC070A (PDF). O total do arquivo é conferido com o rodapé.">
+          <EnviarEProcessar enviar={receberArquivoAcao} acao={processarEtapaAcao}>
             <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
               <Campo rotulo="Administradora" nome="administradoraId">
                 <select id="administradoraId" name="administradoraId" className="campo">{d.administradoras.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select>
@@ -86,15 +40,38 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
                 <input id="arquivo" name="arquivo" type="file" accept=".csv,.txt,.pdf,text/csv,application/pdf" className="campo py-1" required />
               </Campo>
             </div>
-          </FormularioAcao>
+          </EnviarEProcessar>
         </Secao>
       ) : null}
 
-      <Secao id="diagnostico" titulo="Por que essas vendas continuam pendentes" descricao="Dinheiro não apurado vira fila de trabalho: cada motivo com a quantidade, exemplos e o conserto." semPadding>
+      <Secao titulo="Situação" descricao="Depois de cadastrar vendedores, equipes ou regras, clique em “Processar pendências agora” para as vendas paradas usarem o cadastro novo.">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { n: faltaLinhas, t: 'linha(s) de arquivo ainda não gravada(s)' },
+            { n: d.filaPendente, t: 'venda(s) aguardando cálculo' },
+            { n: d.semEstrutura, t: 'venda(s) com cadastro incompleto (vendedor, equipe, categoria…)' },
+          ].map((x) => (
+            <div key={x.t} className={`rounded-lg border-l-4 bg-wr-fundo px-3 py-2 ${x.n === 0 ? 'border-l-wr-verde' : 'border-l-wr-ambar'}`}>
+              <p className={`numero text-[22px] font-bold leading-none ${x.n === 0 ? 'text-wr-verde' : 'text-wr-ambar'}`}>{x.n.toLocaleString('pt-BR')}</p>
+              <p className="mt-1 text-[12px] text-wr-texto-2">{x.t}</p>
+            </div>
+          ))}
+        </div>
+        {editar ? <div className="mt-3"><ProcessarTudo acao={processarEtapaAcao} /></div> : null}
+        {d.filaErro.length > 0 ? (
+          <div className="mt-3 space-y-1 text-[12px]">
+            <p className="font-semibold">{d.filaErro.length} venda(s) deram erro no cálculo:</p>
+            {d.filaErro.slice(0, 5).map((e) => <p key={e.id} className="text-wr-vermelho">{e.cota ? <Link href={`/clientes/${e.cotaId}`}>{e.cota.grupo}/{e.cota.cota}</Link> : '—'}: {e.ultimoErro?.slice(0, 140)}</p>)}
+            {editar ? <FormularioAcao acao={reprocessarErrosAcao} rotulo="Tentar de novo" /> : null}
+          </div>
+        ) : null}
+      </Secao>
+
+      <Secao id="diagnostico" titulo="Vendas que ainda não geraram comissão" descricao="Cada motivo, quantas vendas, exemplos e como resolver. Resolvido o cadastro, clique em “Processar pendências agora”." semPadding>
         {d.diagnostico.length === 0 ? <EstadoVazio titulo="Nenhuma pendência" icone="ok">Todo dinheiro que deveria ter sido apurado foi apurado.</EstadoVazio> : (
           <div className="tabela-quadro">
             <table className="tabela">
-              <thead><tr><th>Motivo</th><th className="direita">Quantidade</th><th>Exemplos</th><th>Conserto</th></tr></thead>
+              <thead><tr><th>Motivo</th><th className="direita">Vendas</th><th>Exemplos</th><th>Como resolver</th></tr></thead>
               <tbody>
                 {d.diagnostico.map((p) => (
                   <tr key={p.tipo}>
@@ -111,7 +88,7 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
       </Secao>
 
       {d.divergencias.length > 0 ? (
-        <Secao titulo="Vendedor corrigido pela administradora" descricao="Nunca aceito em silêncio: decida na ficha de cada cota (aceitar = transferência registrada; manter = registrado)." semPadding>
+        <Secao titulo="Vendedor trocado pela administradora" descricao="O arquivo trouxe outro vendedor para estas vendas. Abra cada uma e escolha: aceitar a troca ou manter o vendedor atual." semPadding>
           <div className="tabela-quadro"><table className="tabela">
             <thead><tr><th>Cota</th><th>Cliente</th><th>Antes</th><th>Agora</th><th>Detectado</th></tr></thead>
             <tbody>{d.divergencias.map((v) => (
@@ -121,11 +98,11 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
         </Secao>
       ) : null}
 
-      <Secao titulo="Histórico" descricao="Conferência = total impresso no rodapé × total reconhecido. Diferente de zero significa linha não reconhecida — descubra antes de pagar a folha." semPadding>
+      <Secao titulo="Arquivos enviados" descricao="“Confere” = o total do rodapé bate com o que foi lido. Se aparecer diferença, alguma linha não foi lida: veja antes de pagar a folha." semPadding>
         {d.historico.length === 0 ? <EstadoVazio titulo="Nenhum arquivo enviado ainda" /> : (
           <div className="tabela-quadro">
             <table className="tabela">
-              <thead><tr><th>Arquivo</th><th>Tipo</th><th>Enviado</th><th className="direita">Linhas</th><th className="direita">Novos</th><th className="direita">Atualiz.</th><th className="direita">Repetidos</th><th className="direita">Erros</th><th className="direita">Diverg.</th><th>Conferência</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Arquivo</th><th>Tipo</th><th>Enviado</th><th className="direita">Linhas</th><th className="direita">Novos</th><th className="direita">Atualizados</th><th className="direita">Sem mudança</th><th className="direita">Não lidas</th><th className="direita">Vendedor trocado</th><th>Total</th><th>Situação</th></tr></thead>
               <tbody>
                 {d.historico.map((i) => {
                   const dif = i.diferencaConferencia;
@@ -141,7 +118,7 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
                       <td className="direita numero">{i.erros > 0 ? <Etiqueta tom="vermelho">{i.erros}</Etiqueta> : 0}</td>
                       <td className="direita numero">{i.divergencias > 0 ? <Etiqueta tom="ambar">{i.divergencias}</Etiqueta> : 0}</td>
                       <td>{dif === null ? <span className="text-[12px] text-wr-texto-3">sem total no arquivo</span> : dif.isZero() ? <Etiqueta tom="verde">confere</Etiqueta> : <Etiqueta tom="vermelho" titulo={`arquivo ${formatarMoeda(i.totalArquivo)} × reconhecido ${formatarMoeda(i.totalReconhecido)}`}>diferença {formatarMoeda(dif)}</Etiqueta>}</td>
-                      <td>{i.status === 'APLICADA' ? <Etiqueta tom="verde">aplicada</Etiqueta> : i.status === 'FALHOU' ? <Etiqueta tom="vermelho">falhou</Etiqueta> : <Etiqueta tom="ambar">{i.status === 'APLICANDO' ? 'aplicando' : 'falta aplicar'}</Etiqueta>}</td>
+                      <td>{i.status === 'APLICADA' ? <Etiqueta tom="verde">processado</Etiqueta> : i.status === 'FALHOU' ? <Etiqueta tom="vermelho">falhou</Etiqueta> : <Etiqueta tom="ambar">{i.status === 'APLICANDO' ? 'processando' : 'falta processar'}</Etiqueta>}</td>
                     </tr>
                   );
                 })}
@@ -151,7 +128,7 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
         )}
       </Secao>
 
-      <Secao id="erros" titulo={`Linhas não reconhecidas${d.selecionada ? ` · ${d.selecionada.nomeArquivo}` : ''}`} descricao="O conteúdo original de cada linha, com o motivo. Nada some em silêncio." semPadding>
+      <Secao id="erros" titulo={`Linhas não reconhecidas${d.selecionada ? ` · ${d.selecionada.nomeArquivo}` : ''}`} descricao="Linhas do arquivo que o sistema não conseguiu ler, com o motivo e o conteúdo original." semPadding>
         {d.erros.length === 0 ? <EstadoVazio titulo="Nenhuma linha com erro neste arquivo" icone="ok" /> : (
           <div className="tabela-quadro">
             <table className="tabela">
@@ -163,11 +140,11 @@ export default async function Importacoes({ searchParams }: { searchParams: Prom
       </Secao>
 
       {editar ? (
-        <Dobra chave="layout-arquivos" titulo="Layout dos arquivos" resumo="configuração de leitura, sem alterar código">
+        <Dobra chave="layout-arquivos" titulo="Avançado: como o sistema lê cada arquivo" resumo="só mexa se um arquivo real não for lido corretamente">
           <div className="space-y-6 p-4">
             <div>
               <p className="mb-2 text-[13px] font-semibold">Base de clientes (CSV)</p>
-              <p className="mb-2 text-[12px] text-wr-texto-2">Para cada campo, os nomes de cabeçalho aceitos (separados por vírgula; comparados sem acento e sem caixa). “Situações canceladas” = trechos da situação que indicam venda cancelada.</p>
+              <p className="mb-2 text-[12px] text-wr-texto-2">Para cada informação, os nomes de coluna aceitos no arquivo (separados por vírgula; comparados sem acento e sem caixa). “Situações canceladas” = trechos da situação que indicam venda cancelada.</p>
               <FormularioAcao acao={salvarLayoutCarteiraAcao} rotulo="Salvar layout da base" confirmacao="Vale para as próximas importações. Arquivos já importados não mudam.">
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   <Campo rotulo="Separador" nome="separador"><input id="separador" name="separador" defaultValue={d.layouts.carteira.separador} maxLength={1} className="campo w-16" /></Campo>

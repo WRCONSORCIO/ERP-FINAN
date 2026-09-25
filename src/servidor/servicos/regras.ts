@@ -2,10 +2,10 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma, type Tx } from '@/lib/db';
 import { aplicarPercentual, dec, formatarMoeda, formatarPercentual, paraTexto, somar, ZERO } from '@/lib/dinheiro';
-import { diaAnterior, formatarData, hoje, somarDias } from '@/lib/datas';
+import { formatarData, hoje, somarDias } from '@/lib/datas';
 import { ErroDeDominio, ErroNaoEncontrado } from '@/lib/erros';
 import { normalizarNome } from '@/lib/texto';
-import type { ComVigencia } from '@/dominio/vigencia';
+import { planejarNaLinhaDoTempo, type ComVigencia } from '@/dominio/vigencia';
 import { calcularBase } from '@/dominio/comissao';
 import { CAMPOS_CARTEIRA } from '@/dominio/importacao/layouts';
 import { auditar } from '../auditoria';
@@ -107,28 +107,24 @@ async function abrirVigencia<T extends ComVigencia & { id: string }>(p: {
   encerrar: (id: string, ate: Date) => Promise<unknown>;
   excluir: (id: string) => Promise<unknown>;
 }): Promise<{ anterior: T | null; encerrada: Date | null; vigenteAte: Date | null }> {
-  const t = p.vigenteDe.getTime();
-  const mesma = p.lista.find((v) => v.vigenteDe.getTime() === t);
-  if (mesma) {
-    const uso = await usoDaVigencia(p.tx, p.entidade, mesma.id);
+  const plano = planejarNaLinhaDoTempo(p.lista, p.vigenteDe);
+  if (plano.mesma) {
+    const uso = await usoDaVigencia(p.tx, p.entidade, plano.mesma.id);
     if (uso > 0) {
       throw new ErroDeDominio(
         `Já existe regra começando em ${formatarData(p.vigenteDe)} e ela já foi usada em ${uso} cálculo(s), então não pode ser trocada. ` +
           'Informe uma data posterior ao último cálculo para a regra nova valer dali em diante.',
       );
     }
-    await p.excluir(mesma.id);
-    return { anterior: mesma, encerrada: null, vigenteAte: mesma.vigenteAte };
+    await p.excluir(plano.mesma.id);
+    return { anterior: plano.mesma, encerrada: null, vigenteAte: plano.vigenteAte };
   }
-  const anterior = [...p.lista].filter((v) => v.vigenteDe.getTime() < t).sort((a, b) => b.vigenteDe.getTime() - a.vigenteDe.getTime())[0] ?? null;
-  const seguinte = [...p.lista].filter((v) => v.vigenteDe.getTime() > t).sort((a, b) => a.vigenteDe.getTime() - b.vigenteDe.getTime())[0] ?? null;
-  if (anterior && (anterior.vigenteAte === null || anterior.vigenteAte.getTime() >= t)) {
-    const c = await p.conflito(anterior);
+  if (plano.anterior && plano.encerrarAnteriorEm) {
+    const c = await p.conflito(plano.anterior);
     if (c) throw new ErroDeDominio(c);
-    await p.encerrar(anterior.id, diaAnterior(p.vigenteDe));
-    return { anterior, encerrada: diaAnterior(p.vigenteDe), vigenteAte: anterior.vigenteAte };
+    await p.encerrar(plano.anterior.id, plano.encerrarAnteriorEm);
   }
-  return { anterior: null, encerrada: null, vigenteAte: seguinte ? diaAnterior(seguinte.vigenteDe) : null };
+  return { anterior: plano.anterior, encerrada: plano.encerrarAnteriorEm, vigenteAte: plano.vigenteAte };
 }
 
 // ------------------------------------------------------------------ Tabelas de comissão

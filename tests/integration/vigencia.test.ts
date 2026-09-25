@@ -158,7 +158,7 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     // CPF não pode ser Veterano; CNPJ não pode ser Iniciante (regra da WR)
     await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.INICIANTE, vigenteDe: D('2026-10-01'), motivo: 'teste', promocao: false })).rejects.toThrow(/não é aceita/);
     // Promover a partir de data com venda apurada: recusado
-    await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.EXPERT, vigenteDe: D('2026-09-01'), motivo: 'teste', promocao: true })).rejects.toThrow(/já foi apurada/);
+    await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.EXPERT, vigenteDe: D('2026-09-01'), motivo: 'teste', promocao: true })).rejects.toThrow(/já foi calculada/);
     await alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.EXPERT, vigenteDe: D('2026-10-01'), motivo: 'meta atingida', promocao: true });
     const cota = await prisma.cota.findFirstOrThrow();
     expect(cota.snapCategoriaId).toBe(cat.VETERANO);

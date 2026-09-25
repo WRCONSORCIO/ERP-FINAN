@@ -52,7 +52,7 @@ describe('integridade garantida pelo PostgreSQL', () => {
     const est = await estrutura(admin, 'A');
     const v = await vendedor(admin, { nome: 'Ana', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
     const antes = await prisma.auditLog.count();
-    await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.INICIANTE, vigenteDe: D('2025-01-01'), motivo: 'x', promocao: false })).rejects.toThrow();
+    await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.VETERANO, vigenteDe: D('2026-10-01'), motivo: 'x', promocao: false })).rejects.toThrow();
     expect(await prisma.auditLog.count()).toBe(antes);
     const eq2 = await prisma.equipe.create({ data: { nome: 'OUTRA', gerenciaId: est.gerenciaId } });
     const { alterarAlocacao } = await import('@/servidor/servicos/vendedores');

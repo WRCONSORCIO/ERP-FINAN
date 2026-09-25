@@ -4,7 +4,7 @@ import { formatarData } from '@/lib/datas';
 import { ErroDeDominio, ErroNaoEncontrado } from '@/lib/erros';
 import { normalizarNome } from '@/lib/texto';
 import { somenteDigitos, cnpjValido } from '@/lib/documento';
-import { planejarNovaVigencia } from '@/dominio/vigencia';
+import { planejarNaLinhaDoTempo } from '@/dominio/vigencia';
 import { auditar } from '../auditoria';
 import { exigir, type Sessao } from '../contexto';
 import { zData, zId, zIdOpcional, zTexto, zTextoOpcional } from './esquemas';
@@ -143,17 +143,19 @@ export async function definirResponsavel(s: Sessao, d: z.infer<typeof esquemaRes
       throw new ErroNaoEncontrado('Pessoa não encontrada.');
     }
     const filtro = d.papel === 'GERENTE' ? { papel: 'GERENTE' as const, gerenciaId: d.unidadeId } : { papel: 'SUPERVISOR' as const, equipeId: d.unidadeId };
-    const atual = await tx.responsavelUnidade.findFirst({ where: filtro, orderBy: { vigenteDe: 'desc' } });
-    const plano = planejarNovaVigencia(atual, d.vigenteDe);
-    if (atual && plano.encerrarAtualEm) {
-      await tx.responsavelUnidade.update({ where: { id: atual.id }, data: { vigenteAte: plano.encerrarAtualEm } });
+    const lista = await tx.responsavelUnidade.findMany({ where: filtro });
+    const plano = planejarNaLinhaDoTempo(lista, d.vigenteDe);
+    if (plano.mesma) throw new ErroDeDominio(`Já existe responsável começando em ${formatarData(d.vigenteDe)}. Escolha outra data.`);
+    const atual = plano.anterior;
+    if (atual && plano.encerrarAnteriorEm) {
+      await tx.responsavelUnidade.update({ where: { id: atual.id }, data: { vigenteAte: plano.encerrarAnteriorEm } });
     }
     const novo = await tx.responsavelUnidade.create({
-      data: { ...filtro, pessoaId, vigenteDe: d.vigenteDe, criadoPorId: s.usuarioId },
+      data: { ...filtro, pessoaId, vigenteDe: d.vigenteDe, vigenteAte: plano.vigenteAte, criadoPorId: s.usuarioId },
     });
     await auditar(tx, {
       sessao: s, acao: 'ALTERACAO', entidade: 'ResponsavelUnidade', entidadeId: novo.id,
-      antes: atual ? { ...atual, vigenteAte: plano.encerrarAtualEm } : null, depois: novo,
+      antes: atual ? { ...atual, vigenteAte: plano.encerrarAnteriorEm } : null, depois: novo,
       contexto: { observacao: 'Vendas já importadas mantêm o responsável congelado; use Recongelar para as que estão sem responsável.' },
     });
     return novo;

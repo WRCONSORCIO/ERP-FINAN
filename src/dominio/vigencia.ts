@@ -47,3 +47,32 @@ export function planejarNovaVigencia(atual: ComVigencia | null, inicioNova: Date
 export function ehVigenciaFutura(v: ComVigencia, hoje: Date): boolean {
   return v.vigenteDe.getTime() > hoje.getTime();
 }
+
+export interface PlanoLinhaDoTempo<T> {
+  /** Já existe um período começando exatamente nesta data. */
+  mesma: T | null;
+  /** Período que cobre a data e será encerrado na véspera (se houver). */
+  anterior: T | null;
+  encerrarAnteriorEm: Date | null;
+  /** Fim do novo período: o fim que o anterior tinha, ou a véspera do seguinte, ou aberto. */
+  vigenteAte: Date | null;
+  /** Próximo período, quando a data cai antes dele (sem período cobrindo a data). */
+  seguinte: T | null;
+}
+
+/**
+ * Encaixa um período novo em qualquer ponto da linha do tempo (inclusive no passado):
+ * depois de um período, encerra-o na véspera; antes de um período, termina na véspera dele.
+ * Quem chama confere se o encaixe tiraria a regra de algum fato já calculado.
+ */
+export function planejarNaLinhaDoTempo<T extends ComVigencia>(lista: readonly T[], inicio: Date): PlanoLinhaDoTempo<T> {
+  const t = inicio.getTime();
+  const mesma = lista.find((v) => v.vigenteDe.getTime() === t) ?? null;
+  if (mesma) return { mesma, anterior: null, encerrarAnteriorEm: null, vigenteAte: mesma.vigenteAte, seguinte: null };
+  const anterior = [...lista].filter((v) => v.vigenteDe.getTime() < t).sort((a, b) => b.vigenteDe.getTime() - a.vigenteDe.getTime())[0] ?? null;
+  const seguinte = [...lista].filter((v) => v.vigenteDe.getTime() > t).sort((a, b) => a.vigenteDe.getTime() - b.vigenteDe.getTime())[0] ?? null;
+  if (anterior && (anterior.vigenteAte === null || anterior.vigenteAte.getTime() >= t)) {
+    return { mesma: null, anterior, encerrarAnteriorEm: diaAnterior(inicio), vigenteAte: anterior.vigenteAte, seguinte: null };
+  }
+  return { mesma: null, anterior: null, encerrarAnteriorEm: null, vigenteAte: seguinte ? diaAnterior(seguinte.vigenteDe) : null, seguinte };
+}

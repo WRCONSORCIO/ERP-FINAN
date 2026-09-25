@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dec } from '@/lib/dinheiro';
 import { deISO, formatarData } from '@/lib/datas';
-import { planejarNovaVigencia, resolverVigente } from '@/dominio/vigencia';
+import { planejarNaLinhaDoTempo, planejarNovaVigencia, resolverVigente } from '@/dominio/vigencia';
 import { situacaoDePromocao } from '@/dominio/promocao';
 import { casarVendedor } from '@/dominio/casamento';
 import { MATRIZ, pode, PERFIS, RECURSOS } from '@/lib/permissoes';
@@ -99,5 +99,33 @@ describe('pessoa desligada', () => {
     expect(pessoaDesligada([{ status: 'DESLIGADO' }, { status: 'ATIVO' }])).toBe(false);
     expect(pessoaDesligada([{ status: 'DESLIGADO' }, { status: 'DESLIGADO' }])).toBe(true);
     expect(pessoaDesligada([])).toBe(false);
+  });
+});
+
+describe('encaixe na linha do tempo', () => {
+  const D = (s: string) => deISO(s) as Date;
+  const lista = [
+    { id: 'a', vigenteDe: D('2026-01-01'), vigenteAte: D('2026-05-31') },
+    { id: 'b', vigenteDe: D('2026-06-01'), vigenteAte: null },
+  ];
+  it('data passada antes do primeiro período termina na véspera dele', () => {
+    const p = planejarNaLinhaDoTempo(lista, D('2025-03-01'));
+    expect(p.anterior).toBeNull();
+    expect(p.seguinte?.id).toBe('a');
+    expect(p.vigenteAte?.getTime()).toBe(D('2025-12-31').getTime());
+  });
+  it('data no meio de um período encerra-o na véspera e herda o fim dele', () => {
+    const p = planejarNaLinhaDoTempo(lista, D('2026-03-01'));
+    expect(p.anterior?.id).toBe('a');
+    expect(p.encerrarAnteriorEm?.getTime()).toBe(D('2026-02-28').getTime());
+    expect(p.vigenteAte?.getTime()).toBe(D('2026-05-31').getTime());
+  });
+  it('data depois do último período aberto encerra o último', () => {
+    const p = planejarNaLinhaDoTempo(lista, D('2026-10-01'));
+    expect(p.anterior?.id).toBe('b');
+    expect(p.vigenteAte).toBeNull();
+  });
+  it('mesma data de início é identificada', () => {
+    expect(planejarNaLinhaDoTempo(lista, D('2026-06-01')).mesma?.id).toBe('b');
   });
 });

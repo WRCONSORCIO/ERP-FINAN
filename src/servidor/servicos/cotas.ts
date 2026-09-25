@@ -80,10 +80,14 @@ export async function recongelarCota(s: Sessao, d: z.infer<typeof esquemaReconge
 }
 
 /** "Recongelar todas": só as vendas com pendência de cadastro/estrutura, em lotes (retomável). */
-export async function recongelarPendentes(s: Sessao, lote = 200): Promise<{ processadas: number; alteradas: number; restantes: number }> {
+/**
+ * `depoisDe` (cursor por cotaId) permite percorrer todas uma vez só: vendas que continuam sem cadastro
+ * continuam pendentes e não fazem o processamento girar em falso.
+ */
+export async function recongelarPendentes(s: Sessao, lote = 200, depoisDe: string | null = null): Promise<{ processadas: number; alteradas: number; restantes: number; ultimo: string | null }> {
   exigir(s, 'importacoes', 'editar');
   const ids = await prisma.pendencia.findMany({
-    where: { resolvidaEm: null, tipo: { in: [...PENDENCIAS_DE_SNAPSHOT] }, cotaId: { not: null } },
+    where: { resolvidaEm: null, tipo: { in: [...PENDENCIAS_DE_SNAPSHOT] }, cotaId: depoisDe ? { gt: depoisDe } : { not: null } },
     distinct: ['cotaId'], select: { cotaId: true }, orderBy: { cotaId: 'asc' },
   });
   const cadastro = await carregarCadastroCasamento(prisma);
@@ -93,7 +97,7 @@ export async function recongelarPendentes(s: Sessao, lote = 200): Promise<{ proc
     const mudou = await prisma.$transaction((tx) => recongelarUma(tx, s, cotaId as string, 'Recongelar todas (pendências de cadastro/estrutura)', cadastro));
     if (mudou) alteradas++;
   }
-  return { processadas: alvo.length, alteradas, restantes: Math.max(0, ids.length - alvo.length) };
+  return { processadas: alvo.length, alteradas, restantes: Math.max(0, ids.length - alvo.length), ultimo: (alvo[alvo.length - 1]?.cotaId as string | undefined) ?? null };
 }
 
 /** Vendedor corrigido pela administradora: aceitar = transferir (com rastro); rejeitar = manter, com rastro. */

@@ -61,7 +61,11 @@ describe('permissões (padrão negar)', () => {
   it('reproduz a matriz da especificação', () => {
     expect(pode('ADMINISTRADOR', 'auditoria', 'tudo')).toBe(true);
     expect(pode('FINANCEIRO', 'vendedores')).toBe(false);
-    expect(pode('FINANCEIRO', 'comissoes', 'editar')).toBe(true);
+    expect(pode('FINANCEIRO', 'comissoes')).toBe(true);
+    // Decisão da WR: só o Administrador altera; nenhum outro perfil edita nada.
+    for (const perfil of ['FINANCEIRO', 'CADASTRO', 'GERENTE', 'SUPERVISOR'] as const) {
+      for (const recurso of RECURSOS) expect(pode(perfil, recurso, 'editar')).toBe(false);
+    }
     expect(pode('FINANCEIRO', 'comissoes', 'tudo')).toBe(false);
     expect(pode('CADASTRO', 'cotas')).toBe(false);
     expect(pode('GERENTE', 'gerencias', 'ver')).toBe(true);

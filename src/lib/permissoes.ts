@@ -17,19 +17,23 @@ const ORDEM: Record<Nivel, number> = { ver: 1, editar: 2, tudo: 3 };
 
 type Matriz = Record<Recurso, Partial<Record<PerfilCodigo, Nivel>>>;
 
+/**
+ * Decisão da WR: só o Administrador altera qualquer coisa. Os demais perfis (inclusive o financeiro,
+ * que é terceirizado) apenas consultam, cada um nas áreas que lhe dizem respeito.
+ */
 export const MATRIZ: Matriz = {
   dashboard:      { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver', CADASTRO: 'ver', GERENTE: 'ver', SUPERVISOR: 'ver' },
-  vendedores:     { ADMINISTRADOR: 'tudo', CADASTRO: 'editar', GERENTE: 'ver', SUPERVISOR: 'ver' },
-  equipes:        { ADMINISTRADOR: 'tudo', CADASTRO: 'editar', GERENTE: 'ver', SUPERVISOR: 'ver' },
-  gerencias:      { ADMINISTRADOR: 'tudo', CADASTRO: 'editar', GERENTE: 'ver' },
+  vendedores:     { ADMINISTRADOR: 'tudo', CADASTRO: 'ver', GERENTE: 'ver', SUPERVISOR: 'ver' },
+  equipes:        { ADMINISTRADOR: 'tudo', CADASTRO: 'ver', GERENTE: 'ver', SUPERVISOR: 'ver' },
+  gerencias:      { ADMINISTRADOR: 'tudo', CADASTRO: 'ver', GERENTE: 'ver' },
   cotas:          { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver', GERENTE: 'ver', SUPERVISOR: 'ver' },
   transferencias: { ADMINISTRADOR: 'tudo' },
-  comissoes:      { ADMINISTRADOR: 'tudo', FINANCEIRO: 'editar', CADASTRO: 'ver', GERENTE: 'ver', SUPERVISOR: 'ver' },
-  estornos:       { ADMINISTRADOR: 'tudo', FINANCEIRO: 'editar', GERENTE: 'ver', SUPERVISOR: 'ver' },
-  bonus:          { ADMINISTRADOR: 'tudo', FINANCEIRO: 'editar', GERENTE: 'ver' },
-  lancamentos:    { ADMINISTRADOR: 'tudo', FINANCEIRO: 'editar' },
-  importacoes:    { ADMINISTRADOR: 'tudo', FINANCEIRO: 'editar' },
-  regras:         { ADMINISTRADOR: 'tudo', FINANCEIRO: 'editar' },
+  comissoes:      { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver', CADASTRO: 'ver', GERENTE: 'ver', SUPERVISOR: 'ver' },
+  estornos:       { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver', GERENTE: 'ver', SUPERVISOR: 'ver' },
+  bonus:          { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver', GERENTE: 'ver' },
+  lancamentos:    { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver' },
+  importacoes:    { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver' },
+  regras:         { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver' },
   usuarios:       { ADMINISTRADOR: 'tudo' },
   auditoria:      { ADMINISTRADOR: 'tudo' },
 };

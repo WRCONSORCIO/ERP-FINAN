@@ -24,8 +24,15 @@
   --color-wr-texto-2: #5b6763;
   --color-wr-texto-3: #8a9793;
 
-  /* Fonte do sistema: uma tela de conferência não pode piscar esperando webfont. */
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Marca (login e cabeçalho): verde de ação, lima de destaque e o fundo noturno do painel. */
+  --color-wr-acao: #08935d;
+  --color-wr-acao-escuro: #067a4d;
+  --color-wr-lima: #7cc242;
+  --color-wr-noite: #032a2b;
+  --color-wr-noite-2: #04403a;
+
+  /* Plus Jakarta Sans embutida no app (sem depender de serviço externo); sistema como reserva. */
+  --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
 }
 

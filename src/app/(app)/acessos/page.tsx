@@ -93,7 +93,7 @@ export default async function Acessos() {
           ))}
         </ul>
       </Secao>
-      <Secao titulo="Matriz de permissões" descricao="ver lê · editar inclui criar · tudo inclui desfazer um fato já registrado. Célula vazia é sem acesso nenhum — o padrão é negar." semPadding>
+      <Secao titulo="Matriz de permissões" descricao="Só o Administrador altera informações; os demais perfis apenas consultam. ver = consulta · tudo = consulta, cria, altera e desfaz. Célula vazia = sem acesso." semPadding>
         <div className="tabela-quadro">
           <table className="tabela">
             <thead><tr><th>Área</th>{PERFIS.map((p) => <th key={p}>{ROTULO_PERFIL[p]}</th>)}</tr></thead>

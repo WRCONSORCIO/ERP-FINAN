@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { LogoWR } from './logo';
 import { Icone, type NomeIcone } from './icones';
 import { IndicadorLink } from './indicador-link';
 
@@ -18,7 +19,7 @@ function Marca({ recolhida }: { recolhida: boolean }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-4">
       {/* Monograma provisório: a especificação registra que ainda não há arquivo oficial da logo. Substituir por <img> quando houver. */}
-      <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-white text-[13px] font-bold tracking-tight text-white" aria-hidden="true">WR</span>
+      <LogoWR tamanho={36} tom="branco" className="shrink-0" />
       {!recolhida ? (
         <span className="min-w-0 leading-tight">
           <span className="block whitespace-nowrap text-[15px] font-bold text-white">WR Consórcio</span>

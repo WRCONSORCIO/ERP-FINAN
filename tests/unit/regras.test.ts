@@ -129,3 +129,15 @@ describe('encaixe na linha do tempo', () => {
     expect(planejarNaLinhaDoTempo(lista, D('2026-06-01')).mesma?.id).toBe('b');
   });
 });
+
+describe('diagnóstico de falha do banco no login', async () => {
+  const { diagnosticarFalhaDeBanco } = await import('@/lib/erros');
+  it('classifica os casos comuns sem vazar dados', () => {
+    expect(diagnosticarFalhaDeBanco(Object.assign(new Error("Can't reach database server at `x`"), { code: 'P1001' })).codigo).toBe('BANCO_INACESSIVEL');
+    expect(diagnosticarFalhaDeBanco(new Error('FATAL: Tenant or user not found')).codigo).toBe('BANCO_SENHA');
+    expect(diagnosticarFalhaDeBanco(Object.assign(new Error('The column `x` does not exist in the current database.'), { code: 'P2022' })).codigo).toBe('BANCO_DESATUALIZADO');
+    expect(diagnosticarFalhaDeBanco(new Error('Timed out fetching a new connection from the connection pool')).codigo).toBe('BANCO_LOTADO');
+    expect(diagnosticarFalhaDeBanco(new Error('prepared statement "s0" already exists')).codigo).toBe('BANCO_POOLER');
+    expect(diagnosticarFalhaDeBanco(new Error('outra coisa')).codigo).toBe('BANCO_ERRO');
+  });
+});

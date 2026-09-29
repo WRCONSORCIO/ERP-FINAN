@@ -38,3 +38,28 @@ export function mensagemDeErroDeBanco(e: unknown): string | null {
   }
   return null;
 }
+
+/**
+ * Diz, sem expor senha nem endereço, POR QUE o banco falhou — para a tela orientar quem está
+ * tentando entrar e para o administrador saber onde mexer.
+ */
+export function diagnosticarFalhaDeBanco(e: unknown): { codigo: string; orientacao: string } {
+  const texto = e instanceof Error ? `${(e as { code?: string }).code ?? ''} ${e.message}` : String(e);
+  const tem = (re: RegExp) => re.test(texto);
+  if (tem(/P1001|Can't reach database server|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|getaddrinfo/i)) {
+    return { codigo: 'BANCO_INACESSIVEL', orientacao: 'O banco não respondeu. Na Supabase, veja se o projeto está pausado (o plano gratuito pausa sem uso) e clique em “Restore”; depois tente de novo.' };
+  }
+  if (tem(/P1000|Authentication failed|password authentication failed|Tenant or user not found/i)) {
+    return { codigo: 'BANCO_SENHA', orientacao: 'O banco recusou o usuário ou a senha. Confira DATABASE_URL e DIRECT_URL na Vercel (a senha do banco pode ter sido trocada na Supabase) e faça Redeploy.' };
+  }
+  if (tem(/P2021|P2022|does not exist in the current database|column .* does not exist|relation .* does not exist/i)) {
+    return { codigo: 'BANCO_DESATUALIZADO', orientacao: 'O banco está numa versão anterior à do sistema. Na Vercel, faça Redeploy do último deploy (ele aplica as atualizações do banco).' };
+  }
+  if (tem(/P2024|Timed out fetching a new connection|too many (connections|clients)|remaining connection slots|MaxClientsInSessionMode/i)) {
+    return { codigo: 'BANCO_LOTADO', orientacao: 'O banco está sem conexões livres no momento. Aguarde um minuto e tente de novo.' };
+  }
+  if (tem(/prepared statement/i)) {
+    return { codigo: 'BANCO_POOLER', orientacao: 'Conexão com o pooler da Supabase mal configurada: use a porta 6543 com ?pgbouncer=true em DATABASE_URL.' };
+  }
+  return { codigo: 'BANCO_ERRO', orientacao: 'Tente de novo em instantes; se persistir, avise o administrador.' };
+}

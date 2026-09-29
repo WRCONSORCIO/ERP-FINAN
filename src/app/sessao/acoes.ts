@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { diagnosticarFalhaDeBanco } from '@/lib/erros';
 import { log } from '@/lib/log';
 import { COOKIE_SESSAO, DURACAO_SESSAO_SEGUNDOS } from '@/lib/sessao-token';
 import { autenticar } from '@/servidor/autenticacao';
@@ -30,8 +31,9 @@ export async function entrar(_anterior: EstadoLogin, fd: FormData): Promise<Esta
     if (!resultado.ok) return { mensagem: resultado.mensagem };
     token = resultado.token;
   } catch (e) {
-    log.erro('login.erro', { erro: e });
-    return { mensagem: 'Não foi possível entrar agora (falha ao acessar o banco). Tente de novo; se persistir, avise o administrador.' };
+    const d = diagnosticarFalhaDeBanco(e);
+    log.erro('login.erro', { codigo: d.codigo, erro: e });
+    return { mensagem: `Não foi possível entrar agora: falha ao acessar o banco (${d.codigo}). ${d.orientacao}` };
   }
   const jar = await cookies();
   jar.set(COOKIE_SESSAO, token, {

@@ -19,7 +19,7 @@ function Marca({ recolhida }: { recolhida: boolean }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-4">
       {/* Monograma provisório: a especificação registra que ainda não há arquivo oficial da logo. Substituir por <img> quando houver. */}
-      <LogoWR tamanho={36} tom="branco" className="shrink-0" />
+      <LogoWR tamanho={40} tom="branco" />
       {!recolhida ? (
         <span className="min-w-0 leading-tight">
           <span className="block whitespace-nowrap text-[15px] font-bold text-white">WR Consórcio</span>

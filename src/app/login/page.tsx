@@ -41,7 +41,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
 
         <div className="relative flex flex-1 flex-col justify-center px-[clamp(3rem,7vw,7rem)] py-16">
           <div className="max-w-xl">
-            <LogoWR tamanho={64} tom="branco" />
+            <LogoWR tamanho={88} tom="branco" />
             <h1 className="mt-10 text-[clamp(2.6rem,3.6vw,3.6rem)] font-extrabold leading-[1.02] tracking-[-0.035em]">
               ERP Financeiro
               <span className="block text-wr-lima">e Comercial</span>
@@ -68,7 +68,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       <section className="relative flex items-center justify-center px-5 py-12">
         <div className="w-full max-w-[400px]">
           <div className="mb-10 lg:mb-12">
-            <LogoWR tamanho={52} />
+            <LogoWR tamanho={64} />
             <h2 className="mt-8 text-[30px] font-extrabold tracking-[-0.03em] text-wr-texto">Entrar</h2>
             <p className="mt-1.5 text-[14px] text-wr-texto-2">WR Consórcio · ERP Financeiro e Comercial</p>
           </div>

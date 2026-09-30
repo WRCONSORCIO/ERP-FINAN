@@ -24,6 +24,7 @@ const esquemaLayoutPdf = z.object({
   linha: z.string().min(5),
   total: z.string().min(3),
   classificacao: z.object({ CANCELAMENTO: z.array(z.string()), COMISSAO_PARCELA: z.array(z.string()) }).optional(),
+  versao: z.number().int().optional(),
 });
 
 export const esquemaLimitesLogin = z.object({
@@ -63,8 +64,11 @@ export async function layoutCarteira(db: Db): Promise<LayoutCarteira> {
 export async function layoutsPdf(db: Db): Promise<Record<'FECHAMENTO_CV056E' | 'COMISSAO_VENDEDOR_CV069E' | 'BONUS_GC070A', LayoutPdf>> {
   const lerPdf = async (chave: string, padrao: LayoutPdf): Promise<LayoutPdf> => {
     const v = esquemaLayoutPdf.safeParse(await ler(db, chave));
-    if (!v.success) return padrao;
-    const l: LayoutPdf = { marcador: v.data.marcador, linha: v.data.linha, total: v.data.total };
+    // Layout salvo de uma versão anterior do padrão (ex.: escrito antes de existir um arquivo real) é ignorado.
+    if (!v.success || (v.data.versao ?? 1) < padrao.versao) return padrao;
+    // A estrutura do registro (início, linhas, cabeçalho do vendedor, linhas ignoradas) vem sempre do padrão.
+    const l: LayoutPdf = { ...padrao, marcador: v.data.marcador, linha: v.data.linha, total: v.data.total };
+    delete l.classificacao;
     if (v.data.classificacao) l.classificacao = v.data.classificacao;
     else if (padrao.classificacao) l.classificacao = padrao.classificacao;
     return l;

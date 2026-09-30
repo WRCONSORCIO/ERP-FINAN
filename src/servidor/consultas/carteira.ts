@@ -99,6 +99,7 @@ export async function fichaDaCota(s: Sessao, id: string) {
       versoes: { orderBy: { criadoEm: 'desc' }, take: 20, include: { importacao: { select: { nomeArquivo: true } } } },
       pendencias: { where: { resolvidaEm: null } },
       divergencias: { orderBy: { criadoEm: 'desc' } },
+      conferencias: { include: { decididoPor: { select: { nome: true } } } },
     },
   });
   if (!cota) return null;

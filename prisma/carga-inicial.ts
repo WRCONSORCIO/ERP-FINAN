@@ -24,13 +24,14 @@ export const SEGMENTOS = [
  * pagaPelaWr: Veterano e Expert recebem direto da administradora (6.6, CV069E) — o percentual continua sendo calculado (base do estorno).
  * geraSupervisao: "hoje, só iniciante" (6.4).
  * recebeSobreOutrosDocumentos: o CNPJ Expert recebe a tabela dele sobre as vendas do CNPJ Veterano da mesma pessoa.
+ * parcelasConferenciaManual: a WR não recebe a 2ª parcela do Iniciante da administradora, mas paga o vendedor — com conferência.
  * geraGerencia: a especificação não restringe a gerência a uma categoria (diferente da supervisão) — carga com todas.
  *   PONTO A CONFIRMAR PELA WR; ajustável em Configurações › Categorias (vale para vendas futuras).
  */
 export const CATEGORIAS = [
-  { codigo: 'INICIANTE', nome: 'Iniciante', ordem: 1, documentosAceitos: ['CPF'] as const, pagaPelaWr: true, geraSupervisao: true, geraGerencia: true, contaParaPromocao: true, recebeSobreOutrosDocumentos: false },
-  { codigo: 'VETERANO', nome: 'Veterano', ordem: 2, documentosAceitos: ['CNPJ'] as const, pagaPelaWr: false, geraSupervisao: false, geraGerencia: true, contaParaPromocao: true, recebeSobreOutrosDocumentos: false },
-  { codigo: 'EXPERT', nome: 'Expert', ordem: 3, documentosAceitos: ['CNPJ'] as const, pagaPelaWr: false, geraSupervisao: false, geraGerencia: true, contaParaPromocao: true, recebeSobreOutrosDocumentos: true },
+  { codigo: 'INICIANTE', nome: 'Iniciante', ordem: 1, documentosAceitos: ['CPF'] as const, pagaPelaWr: true, geraSupervisao: true, geraGerencia: true, contaParaPromocao: true, recebeSobreOutrosDocumentos: false, parcelasConferenciaManual: [2] },
+  { codigo: 'VETERANO', nome: 'Veterano', ordem: 2, documentosAceitos: ['CNPJ'] as const, pagaPelaWr: false, geraSupervisao: false, geraGerencia: true, contaParaPromocao: true, recebeSobreOutrosDocumentos: false, parcelasConferenciaManual: [] },
+  { codigo: 'EXPERT', nome: 'Expert', ordem: 3, documentosAceitos: ['CNPJ'] as const, pagaPelaWr: false, geraSupervisao: false, geraGerencia: true, contaParaPromocao: true, recebeSobreOutrosDocumentos: true, parcelasConferenciaManual: [] },
 ];
 
 type Parcelas = Partial<Record<1 | 2 | 3 | 4 | 5 | 6, string>>;

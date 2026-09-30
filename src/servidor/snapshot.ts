@@ -16,6 +16,7 @@ export interface SnapshotResolvido {
   snapPagaPelaWr: boolean | null;
   snapGeraSupervisao: boolean | null;
   snapGeraGerencia: boolean | null;
+  snapParcelasConferencia: number[];
   snapExpertVendedorId: string | null;
   snapExpertCategoriaId: string | null;
   snapExpertPagaPelaWr: boolean | null;
@@ -81,7 +82,7 @@ export async function resolverSnapshot(db: Db, p: { vendedorId: string | null; d
   const snap: SnapshotResolvido = {
     snapVendedorId: p.vendedorId, snapCategoriaId: null, snapSegmentoId: null, snapModalidadeFlexId: null,
     snapEquipeId: null, snapGerenciaId: null, snapSupervisorPessoaId: null, snapGerentePessoaId: null, snapRecuperacao: false,
-    snapPagaPelaWr: null, snapGeraSupervisao: null, snapGeraGerencia: null,
+    snapPagaPelaWr: null, snapGeraSupervisao: null, snapGeraGerencia: null, snapParcelasConferencia: [],
     snapExpertVendedorId: null, snapExpertCategoriaId: null, snapExpertPagaPelaWr: null,
   };
 
@@ -109,6 +110,7 @@ export async function resolverSnapshot(db: Db, p: { vendedorId: string | null; d
     snap.snapPagaPelaWr = cat.pagaPelaWr;
     snap.snapGeraSupervisao = cat.geraSupervisao;
     snap.snapGeraGerencia = cat.geraGerencia;
+    snap.snapParcelasConferencia = [...cat.parcelasConferenciaManual];
   }
   snap.snapRecuperacao = recuperacoes.some((r) => vigenteEm(p.dataVenda, r.inicio, r.fim));
   Object.assign(snap, await resolverExpert(db, p.vendedorId, p.dataVenda, cat));

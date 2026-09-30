@@ -7,7 +7,7 @@ import { ErroDeDominio, ErroNaoEncontrado } from '@/lib/erros';
 import { normalizarNome } from '@/lib/texto';
 import { planejarNaLinhaDoTempo, type ComVigencia } from '@/dominio/vigencia';
 import { calcularBase } from '@/dominio/comissao';
-import { CAMPOS_CARTEIRA } from '@/dominio/importacao/layouts';
+import { CAMPOS_CARTEIRA, LAYOUT_CV056E_INICIAL, LAYOUT_CV069E_INICIAL, LAYOUT_GC070A_INICIAL } from '@/dominio/importacao/layouts';
 import { auditar } from '../auditoria';
 import { CHAVES } from '../configuracao';
 import { exigir, type Sessao } from '../contexto';
@@ -31,6 +31,13 @@ export const esquemaCategoria = z.object({
   geraGerencia: zBooleano,
   contaParaPromocao: zBooleano,
   recebeSobreOutrosDocumentos: zBooleano,
+  // Texto "2" ou "2, 5": parcelas em que a WR não recebe da administradora e pagar o vendedor exige conferência.
+  parcelasConferenciaManual: z.string().optional().transform((v, ctx) => {
+    const partes = (v ?? '').split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+    const n = partes.map(Number);
+    if (n.some((x) => !Number.isInteger(x) || x < 1 || x > 999)) { ctx.addIssue({ code: 'custom', message: 'Informe números de parcela separados por vírgula (ex.: 2).' }); return z.NEVER; }
+    return [...new Set(n)].sort((a, b) => a - b);
+  }),
 });
 export const esquemaEditarCategoria = esquemaCategoria.omit({ codigo: true }).extend({ id: zId, motivo: zMotivo });
 export const esquemaAtivoCategoria = z.object({ id: zId, ativo: zBooleano });
@@ -493,7 +500,8 @@ export async function salvarLayoutPdf(s: Sessao, d: z.infer<typeof esquemaLayout
   }
   if (!/\(\?<valor>/.test(d.linha) || !/\(\?<grupo>/.test(d.linha) || !/\(\?<cota>/.test(d.linha)) throw new ErroDeDominio('A expressão da linha precisa dos grupos nomeados grupo, cota e valor.');
   if (!/\(\?<total>/.test(d.total)) throw new ErroDeDominio('A expressão do total precisa do grupo nomeado total.');
-  const valor = { marcador: d.marcador, linha: d.linha, total: d.total, ...(d.tipo === 'FECHAMENTO_CV056E' ? { classificacao: { CANCELAMENTO: d.cancelamento, COMISSAO_PARCELA: d.comissao } } : {}) };
+  const padrao = { FECHAMENTO_CV056E: LAYOUT_CV056E_INICIAL, COMISSAO_VENDEDOR_CV069E: LAYOUT_CV069E_INICIAL, BONUS_GC070A: LAYOUT_GC070A_INICIAL }[d.tipo];
+  const valor = { versao: padrao.versao, marcador: d.marcador, linha: d.linha, total: d.total, ...(d.tipo === 'FECHAMENTO_CV056E' ? { classificacao: { CANCELAMENTO: d.cancelamento, COMISSAO_PARCELA: d.comissao } } : {}) };
   await salvarConfig(s, CHAVES[d.tipo], valor, `Layout ${d.tipo}`);
 }
 

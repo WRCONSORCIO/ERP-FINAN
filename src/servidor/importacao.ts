@@ -263,6 +263,9 @@ async function aplicarLinhaCarteira(tx: Tx, imp: Importacao, d: LinhaCarteira, c
       dados.dataCancelamento = hojeData;
       dados.origemDataCancelamento = `data da importação que registrou o cancelamento (${formatarData(hojeData)})`;
     }
+  } else if (existente.cancelada && existente.origemDataCancelamento?.startsWith(ORIGEM_CANCELAMENTO_RELATORIO)) {
+    // Cancelada pelo relatório da WR: a base atrasada (ainda "ativa") não desfaz o cancelamento.
+    dados.cancelada = true;
   } else {
     dados.dataCancelamento = null;
     dados.origemDataCancelamento = null;
@@ -330,6 +333,9 @@ function classificar(texto: string | null, layout: LayoutPdf): TipoLancamento {
 
 type DadosPdf = LinhaPdf & { ocorrencia: number };
 
+/** Início do texto de origem da data quando o cancelamento veio do relatório de comissão da WR (CV056E). */
+export const ORIGEM_CANCELAMENTO_RELATORIO = 'relatório de comissão da WR';
+
 async function aplicarLancamento(tx: Tx, imp: Importacao, l: LinhaDeImportacao): Promise<ResultadoLinha> {
   const d = l.dados as unknown as DadosPdf;
   const hash = hashLinhaPdf(imp.tipo, imp.administradoraId, d, d.ocorrencia);
@@ -340,13 +346,27 @@ async function aplicarLancamento(tx: Tx, imp: Importacao, l: LinhaDeImportacao):
   await tx.lancamentoAdministradora.create({
     data: {
       importacaoId: imp.id, cotaId, grupo: d.grupo, cota: d.cota, contrato: d.contrato, consorciado: d.consorciado,
-      tipoOrigemTexto: d.tipo ?? '', tipo, parcela: d.parcela, valor: d.valor, dataReferencia: deISO(d.data), hash, linhaOriginal: l.original,
+      tipoOrigemTexto: d.tipo ?? '', tipo, parcela: d.parcela ?? (tipo === 'COMISSAO_PARCELA' ? 1 : null), valor: d.valor, dataReferencia: deISO(d.data), hash, linhaOriginal: l.original,
     },
   });
-  // O débito do cancelamento define a competência da cobrança do estorno.
-  if (cotaId && tipo === 'CANCELAMENTO') await enfileirarApuracao(tx, cotaId, 'débito de cancelamento pela administradora');
   const mensagens: string[] = [];
-  if (!cotaId) mensagens.push('Sem vínculo com a carteira');
+  // Cancelamento no relatório da WR: a venda caiu. Se a base de clientes ainda não registrou, o relatório registra
+  // (data = data do débito), e a apuração avalia o estorno do VENDEDOR pelas regras do sistema (categoria,
+  // parcelas pagas, recuperação) — o valor que a administradora estorna da WR é outro.
+  if (cotaId && tipo === 'CANCELAMENTO') {
+    const cota = await tx.cota.findUniqueOrThrow({ where: { id: cotaId }, select: { cancelada: true } });
+    const dataDebito = deISO(d.data);
+    if (!cota.cancelada && dataDebito) {
+      await tx.cota.update({
+        where: { id: cotaId },
+        data: { cancelada: true, dataCancelamento: dataDebito, origemDataCancelamento: `${ORIGEM_CANCELAMENTO_RELATORIO} (${formatarData(dataDebito)})` },
+      });
+      mensagens.push('Venda marcada como cancelada pelo relatório da WR');
+    }
+    // O débito do cancelamento também define a competência da cobrança do estorno.
+    await enfileirarApuracao(tx, cotaId, 'cancelamento no relatório de comissão da WR');
+  }
+  if (!cotaId) mensagens.push(tipo === 'CANCELAMENTO' ? 'Cancelamento sem a venda na carteira: o estorno do vendedor não pôde ser avaliado' : 'Sem vínculo com a carteira');
   if (tipo === 'OUTRO') mensagens.push(`Lançamento fora dos tipos previstos ("${d.tipo ?? ''}"): importado e exibido, sem gerar comissão`);
   return { status: 'NOVA', ...(mensagens.length > 0 ? { mensagem: mensagens.join(' · ') } : {}) };
 }
@@ -356,11 +376,12 @@ async function aplicarComissaoAdm(tx: Tx, imp: Importacao, l: LinhaDeImportacao,
   const hash = hashLinhaPdf(imp.tipo, imp.administradoraId, d, d.ocorrencia);
   if (await tx.comissaoVendedorAdm.findUnique({ where: { hash }, select: { id: true } })) return { status: 'SEM_MUDANCA' };
   const cotaId = await localizarCota(tx, imp.administradoraId, d);
-  const casamento = casarVendedor(d.vendedor, null, cadastro);
+  const casamento = casarVendedor(d.vendedor, d.vendedorDocumento ?? null, cadastro);
   await tx.comissaoVendedorAdm.create({
     data: {
       importacaoId: imp.id, cotaId, vendedorId: casamento.vendedorId, vendedorTexto: d.vendedor, grupo: d.grupo, cota: d.cota, contrato: d.contrato,
-      parcela: d.parcela, valor: d.valor, dataReferencia: deISO(d.data), hash, linhaOriginal: l.original,
+      // Sem número de parcela no relatório = 1ª parcela (a venda nova).
+      parcela: d.parcela ?? 1, valor: d.valor, dataReferencia: deISO(d.data), hash, linhaOriginal: l.original,
     },
   });
   const msgs = [!cotaId ? 'Sem vínculo com a carteira' : null, !casamento.vendedorId ? 'Vendedor não casado com o cadastro' : null].filter(Boolean);

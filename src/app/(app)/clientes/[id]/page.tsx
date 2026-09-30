@@ -14,6 +14,8 @@ import { MemoriaDeCalculo } from '@/ui/memoria';
 import { ROTULO_COMISSAO, ROTULO_ESTORNO, TOM_COMISSAO, TOM_ESTORNO } from '@/ui/rotulos';
 import { recongelarAcao, resolverDivergenciaAcao, transferirAcao } from '../acoes';
 
+import { DecidirConferencia } from '../conferencia';
+
 export const metadata: Metadata = { title: 'Ficha da cota' };
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +35,7 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
   if (!f) notFound();
   const { cota } = f;
   const podeTransferir = pode(s.perfil, 'transferencias', 'editar');
+  const podeConferir = pode(s.perfil, 'comissoes', 'editar');
   const vendedores = podeTransferir ? await prisma.vendedor.findMany({ where: { status: 'ATIVO' }, select: { id: true, nome: true, tipoDocumento: true, documento: true }, orderBy: { nome: 'asc' } }) : [];
   const nomeVendedor = (vid: string | null) => (vid ? f.vendedoresTransf.find((v) => v.id === vid)?.nome ?? vid : '—');
 
@@ -102,6 +105,28 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
           ) : null}
         </Aviso>
       ))}
+
+      {cota.snapParcelasConferencia.length > 0 ? (
+        <Secao titulo="Conferência de parcela" descricao="Parcela que a WR não recebe da administradora (hoje: a 2ª do Iniciante). Quando o cliente paga, a comissão do vendedor só é liberada depois que alguém decide pagar.">
+          <ul className="space-y-3">
+            {cota.snapParcelasConferencia.map((parcela) => {
+              const c = cota.conferencias.find((x) => x.parcela === parcela);
+              const pagou = cota.parcelasPagas >= parcela;
+              return (
+                <li key={parcela} className="text-[13px]">
+                  <p>
+                    <strong>{parcela}ª parcela:</strong>{' '}
+                    {c ? (
+                      <><Etiqueta tom={c.decisao === 'PAGAR' ? 'verde' : 'vermelho'}>{c.decisao === 'PAGAR' ? 'pagar ao vendedor' : 'não pagar'}</Etiqueta> · {c.decididoPor.nome} em {formatarDataHora(c.decididoEm)} · “{c.motivo}”</>
+                    ) : pagou ? <Etiqueta tom="ambar">cliente pagou — aguardando conferência</Etiqueta> : <span className="text-wr-texto-2">o cliente ainda não pagou</span>}
+                  </p>
+                  {podeConferir && pagou ? <div className="mt-2"><DecidirConferencia cotaId={cota.id} parcela={parcela} /></div> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </Secao>
+      ) : null}
 
       <Secao titulo="Comissões" descricao="Cada linha é uma obrigação sobre uma parcela. Canceladas ficam como histórico (append-only). Clique em “De onde saiu” para a memória de cálculo." semPadding>
         {cota.comissoes.length === 0 ? <EstadoVazio titulo="Nenhuma comissão calculada">Veja o motivo acima, ou use “Processar pendências agora” em Importações.</EstadoVazio> : (

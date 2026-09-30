@@ -6,7 +6,7 @@ import { pode } from '@/lib/permissoes';
 import { ROTULO_DESTINO, type Destino } from '@/dominio/comissao';
 import { exigirPagina } from '@/servidor/sessao';
 import { param, type Params } from '@/servidor/consultas/comum';
-import { listarEstornos } from '@/servidor/consultas/estornos';
+import { cancelamentosDoRelatorio, listarEstornos } from '@/servidor/consultas/estornos';
 import { Cartao, DataCurta, Dinheiro, EstadoVazio, Etiqueta, LinkBotao, Monograma, Pagina, Percentual, Secao } from '@/ui/base';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import { MemoriaDeCalculo } from '@/ui/memoria';
@@ -26,6 +26,7 @@ export default async function Estornos({ searchParams }: { searchParams: Promise
   const abertos = param(sp, 'abertos') === '1';
   const sel = param(sp, 'titular');
   const d = await listarEstornos(s, periodo, abertos);
+  const rel = abertos ? null : await cancelamentosDoRelatorio(s, periodo);
   const podeEditar = pode(s.perfil, 'estornos', 'editar');
   const podePerdoar = pode(s.perfil, 'estornos', 'tudo');
   const grupoSel = d.grupos.find((g) => g.chave === sel);
@@ -75,6 +76,35 @@ export default async function Estornos({ searchParams }: { searchParams: Promise
           </div>
         )}
       </Secao>
+
+      {rel && rel.itens.length > 0 ? (
+        <Secao
+          titulo="Cancelamentos no relatório da WR"
+          descricao={<>O que a administradora estornou da WR (valor negativo no relatório de comissão) e o estorno que o sistema calculou para o vendedor pelas regras cadastradas (categoria, cancelamento na 1ª parcela, recuperação). São valores diferentes: o da WR é o da administradora; o do vendedor é o percentual da WR.</>}
+          semPadding
+        >
+          <div className="tabela-quadro">
+            <table className="tabela">
+              <thead><tr><th>Débito</th><th>Cliente</th><th>Grupo/Cota</th><th>Vendedor</th><th className="direita">Parc. pagas</th><th className="direita">Estorno da WR</th><th className="direita">Estorno do vendedor</th><th>Situação</th></tr></thead>
+              <tbody>
+                {rel.itens.map((i) => (
+                  <tr key={i.id}>
+                    <td><DataCurta valor={i.data} /></td>
+                    <td>{i.cotaId ? <Link href={`/clientes/${i.cotaId}`}>{i.cliente}</Link> : i.cliente}</td>
+                    <td className="numero">{i.grupo}/{i.cota}</td>
+                    <td>{i.vendedor ?? <Etiqueta tom="ambar">sem vendedor</Etiqueta>}{i.categoria ? <span className="block text-[11px] text-wr-texto-3">{i.categoria}</span> : null}</td>
+                    <td className="direita numero">{i.parcelasPagas ?? '—'}</td>
+                    <td className="direita"><Dinheiro valor={i.estornoWr} /></td>
+                    <td className="direita">{i.temEstorno ? <Dinheiro valor={i.estornoVendedor} tom="vermelho" forte /> : '—'}</td>
+                    <td className="max-w-[320px] text-[12px]">{i.temEstorno ? <Etiqueta tom="vermelho">{i.situacao}</Etiqueta> : <span className="text-wr-texto-2">{i.situacao}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr><td colSpan={5}>Total</td><td className="direita"><Dinheiro valor={rel.totalWr} /></td><td className="direita"><Dinheiro valor={rel.totalVendedor} /></td><td /></tr></tfoot>
+            </table>
+          </div>
+        </Secao>
+      ) : null}
 
       {grupoSel ? (
         <Secao id="detalhe" titulo={`Detalhe · ${grupoSel.nome}`} descricao="Ciclo: a cobrar → em cobrança → quitado, ou perdoado. Cada passo fica registrado. Estorno nunca é descontado da folha automaticamente." semPadding>

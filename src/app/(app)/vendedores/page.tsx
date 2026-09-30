@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { formatarDocumento } from '@/lib/documento';
 import { pode } from '@/lib/permissoes';
 import { exigirPagina } from '@/servidor/sessao';
 import { param, type Params } from '@/servidor/consultas/comum';
@@ -23,7 +22,7 @@ function TabelaPessoas({ linhas }: { linhas: Linha[] }) {
       <table className="tabela">
         <thead>
           <tr>
-            <th>Pessoa</th><th>Documentos</th><th className="direita">Cotas</th><th className="direita">Produção acumulada</th><th>Próxima categoria</th><th className="direita">Falta</th>
+            <th>Pessoa</th><th>Categoria</th><th className="direita">Cotas</th><th className="direita">Produção acumulada</th><th>Próxima categoria</th><th className="direita">Falta</th>
           </tr>
         </thead>
         <tbody>
@@ -38,16 +37,10 @@ function TabelaPessoas({ linhas }: { linhas: Linha[] }) {
                   </Link>
                 </td>
                 <td>
-                  <div className="flex flex-col gap-1">
-                    {l.documentos.map((d) => (
-                      <div key={d.id} className="flex flex-wrap items-center gap-1">
-                        <Etiqueta tom={d.tipo === 'CPF' ? 'azul' : 'neutro'}>{d.tipo}</Etiqueta>
-                        <span className="numero text-[12px] text-wr-texto-2">{formatarDocumento(d.documento)}</span>
-                        {d.categoria ? <Etiqueta tom="verde">{d.categoria.nome}</Etiqueta> : <Etiqueta tom="ambar">sem categoria</Etiqueta>}
-                        {d.emRecuperacao ? <Etiqueta tom="ambar">recuperação</Etiqueta> : null}
-                        {d.status === 'DESLIGADO' ? <Etiqueta tom="vermelho">desligado</Etiqueta> : null}
-                      </div>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {[...new Set(l.documentos.filter((d) => d.status !== 'DESLIGADO').map((d) => d.categoria?.nome ?? ''))].map((c) => (c ? <Etiqueta key={c} tom="verde">{c}</Etiqueta> : <Etiqueta key="sem" tom="ambar">sem categoria</Etiqueta>))}
+                    {l.documentos.some((d) => d.emRecuperacao) ? <Etiqueta tom="ambar">recuperação</Etiqueta> : null}
+                    {l.documentos.length > 0 && l.documentos.every((d) => d.status === 'DESLIGADO') ? <Etiqueta tom="vermelho">desligado</Etiqueta> : null}
                   </div>
                 </td>
                 <td className="direita numero">{l.cotas}</td>

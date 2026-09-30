@@ -139,27 +139,33 @@ async function gerar(tipo: string, s: Sessao, sp: Params, formato: string): Prom
       const e = await extratoDaPessoa(s, String(sp.pessoa ?? ''), periodo);
       if (!e) return null;
       const pdf = await gerarPdfExtrato({
-        titulo: `Extrato de comissões · ${e.pessoa.nome}`,
-        subtitulo: [`Período: ${periodo.rotulo}`, `Documentos: ${e.pessoa.documentos.map((d) => `${d.tipoDocumento} ${formatarDocumento(d.documento)}`).join(' · ') || '—'}`],
+        titulo: 'Extrato de comissões',
+        nome: e.pessoa.nome,
+        periodo: periodo.rotulo,
+        detalhes: [`CPF/CNPJ: ${e.pessoa.documentos.map((d) => `${d.tipoDocumento} ${formatarDocumento(d.documento)}`).join('  ·  ') || '—'}`],
         resumo: [
-          ['Comissão paga pela WR (liberada)', formatarMoeda(e.totalComissao)], ['Paga direto pela administradora', formatarMoeda(e.totalAdm)],
-          ['Estornos do período', formatarMoeda(e.totalEstorno)], ['Líquido informativo (sem desconto automático)', formatarMoeda(e.liquidoInformativo)],
+          { rotulo: 'Comissão paga pela WR (liberada)', valor: formatarMoeda(e.totalComissao) },
+          { rotulo: 'Paga direto pela administradora', valor: formatarMoeda(e.totalAdm) },
+          { rotulo: 'Estornos do período', valor: formatarMoeda(e.totalEstorno) },
+          { rotulo: 'Líquido (informativo)', valor: formatarMoeda(e.liquidoInformativo), destaque: true },
         ],
         tabelas: [
           {
             titulo: 'Comissões',
-            colunas: [{ titulo: 'Venda', largura: 60 }, { titulo: 'Cliente', largura: 170 }, { titulo: 'Cota', largura: 62 }, { titulo: 'Crédito', largura: 86, direita: true }, { titulo: 'Flex', largura: 55 }, { titulo: 'Papel', largura: 64 }, { titulo: 'Parc.', largura: 34, direita: true }, { titulo: '%', largura: 50, direita: true }, { titulo: 'Comissão', largura: 80, direita: true }, { titulo: 'Paga por', largura: 70 }, { titulo: 'Situação', largura: 47 }],
+            colunas: [{ titulo: 'Venda', largura: 60 }, { titulo: 'Cliente', largura: 160 }, { titulo: 'Cota', largura: 56 }, { titulo: 'Crédito', largura: 84, direita: true }, { titulo: 'Flex', largura: 82 }, { titulo: 'Papel', largura: 64 }, { titulo: 'Parc.', largura: 34, direita: true }, { titulo: '%', largura: 50, direita: true }, { titulo: 'Comissão', largura: 80, direita: true }, { titulo: 'Paga por', largura: 72 }, { titulo: 'Situação', largura: 52 }],
             linhas: e.comissoes.map((c) => [formatarData(c.cota.dataVenda), c.cota.clienteNome, `${c.cota.grupo}/${c.cota.cota}`, formatarMoeda(c.cota.credito), c.cota.snapModalidadeFlex?.nome ?? '-', ROTULO_DESTINO[c.destino as Destino] + (c.ajusteDeId ? ' (aj.)' : ''), `${c.parcela}`, formatarPercentual(c.percentual), formatarMoeda(c.valor), c.pagaPelaWr ? 'WR' : 'administradora', ROTULO_COMISSAO[c.status] ?? '']),
-            total: ['Total WR', '', '', '', '', '', '', '', formatarMoeda(e.totalComissao), '', ''],
+            total: ['Total pago pela WR', '', '', '', '', '', '', '', formatarMoeda(e.totalComissao), '', ''],
+            vazio: 'Nenhuma comissão neste período.',
           },
           {
             titulo: 'Estornos',
             colunas: [{ titulo: 'Cancelamento', largura: 70 }, { titulo: 'Cliente', largura: 200 }, { titulo: 'Cota', largura: 70 }, { titulo: 'Tipo', largura: 80 }, { titulo: 'Comissão base', largura: 100, direita: true }, { titulo: '%', largura: 60, direita: true }, { titulo: 'Valor', largura: 100, direita: true }, { titulo: 'Situação', largura: 98 }],
             linhas: e.estornos.map((x) => [formatarData(x.dataEvento), x.cota.clienteNome, `${x.cota.grupo}/${x.cota.cota}`, x.tipo === 'RECUPERACAO' ? 'Recuperação' : 'Cancelamento', formatarMoeda(x.comissaoBase), formatarPercentual(x.percentual), formatarMoeda(x.valor), ROTULO_ESTORNO[x.status] ?? '']),
-            total: ['Total', '', '', '', '', '', formatarMoeda(e.totalEstorno), ''],
+            total: ['Total de estornos', '', '', '', '', '', formatarMoeda(e.totalEstorno), ''],
+            vazio: 'Nenhum estorno neste período.',
           },
         ],
-        rodape: `ERP WR Consórcio · gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+        rodape: `WR Consórcio · Extrato gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} · o líquido é informativo: estornos não são descontados automaticamente`,
       });
       return { nome: `extrato-${e.pessoa.nome.replace(/\W+/g, '-').toLowerCase()}-${periodo.competencia ?? 'periodo'}.pdf`, conteudo: pdf, tipo: 'application/pdf', linhas: e.comissoes.length + e.estornos.length };
     }

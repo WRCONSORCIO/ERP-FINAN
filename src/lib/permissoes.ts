@@ -8,7 +8,7 @@ export type PerfilCodigo = (typeof PERFIS)[number];
 
 export const RECURSOS = [
   'dashboard', 'vendedores', 'equipes', 'gerencias', 'cotas', 'transferencias', 'comissoes',
-  'estornos', 'bonus', 'lancamentos', 'importacoes', 'regras', 'usuarios', 'auditoria',
+  'estornos', 'bonus', 'lancamentos', 'importacoes', 'regras', 'cartas', 'usuarios', 'auditoria',
 ] as const;
 export type Recurso = (typeof RECURSOS)[number];
 
@@ -34,6 +34,7 @@ export const MATRIZ: Matriz = {
   lancamentos:    { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver' },
   importacoes:    { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver' },
   regras:         { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver' },
+  cartas:         { ADMINISTRADOR: 'tudo', FINANCEIRO: 'ver' },
   usuarios:       { ADMINISTRADOR: 'tudo' },
   auditoria:      { ADMINISTRADOR: 'tudo' },
 };
@@ -58,5 +59,5 @@ export const ROTULO_PERFIL: Record<PerfilCodigo, string> = {
 export const ROTULO_RECURSO: Record<Recurso, string> = {
   dashboard: 'Dashboard', vendedores: 'Vendedores', equipes: 'Equipes', gerencias: 'Gerências', cotas: 'Cotas (carteira)',
   transferencias: 'Transferências', comissoes: 'Comissões', estornos: 'Estornos', bonus: 'Bônus', lancamentos: 'Lançamentos da administradora',
-  importacoes: 'Importações', regras: 'Regras', usuarios: 'Usuários', auditoria: 'Auditoria',
+  importacoes: 'Importações', regras: 'Regras', cartas: 'Cartas Contempladas', usuarios: 'Usuários', auditoria: 'Auditoria',
 };

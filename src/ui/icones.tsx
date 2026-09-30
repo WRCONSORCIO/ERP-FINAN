@@ -32,6 +32,7 @@ const caminhos = {
   tendenciaBaixa: 'M23 18l-9.5-9.5-5 5L1 6M17 18h6v-6',
   mais: 'M12 5v14M5 12h14',
   lgpd: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01',
+  cartas: 'M2 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zM2 10h17M6 15h4M20 8l1.5-.5a2 2 0 0 1 2.5 1.3L21 18',
 } as const;
 
 export type NomeIcone = keyof typeof caminhos;

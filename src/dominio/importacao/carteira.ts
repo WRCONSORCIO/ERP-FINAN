@@ -126,20 +126,12 @@ export function lerCarteira(conteudo: string, layout: LayoutCarteira): Resultado
         credito: paraTexto(credito.toDecimalPlaces(2)), dataVenda: paraISO(dataVenda), parcelasPagas: Number(parcTexto),
         situacao, cancelada, dataCancelamento: dataCancelamento ? paraISO(dataCancelamento) : null,
         vendedorNome: texto(campos, mapa.vendedorNome), vendedorDocumento: vendedorDocumento === '' ? null : vendedorDocumento,
-        segmento: texto(campos, mapa.segmento), flex: textoFlex(texto(campos, mapa.flex)),
+        segmento: texto(campos, mapa.segmento), flex: texto(campos, mapa.flex),
         clienteEmail: texto(campos, mapa.clienteEmail), clienteTelefone: texto(campos, mapa.clienteTelefone),
       },
     });
   }
   return resultado;
-}
-
-/** Coluna de flex só com o número (ex.: TX_FLEX = "50" na Servopa) vira "FLEX 50"; "0" = sem flex. */
-function textoFlex(v: string | null): string | null {
-  if (!v) return null;
-  const n = /^\s*(\d{1,3})\s*%?\s*$/.exec(v);
-  if (!n) return v;
-  return Number(n[1]) === 0 ? null : `FLEX ${Number(n[1])}`;
 }
 
 /** Hash de conteúdo da linha: o que já entrou volta como "sem mudança", nunca duplicado. */

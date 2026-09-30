@@ -152,8 +152,8 @@ async function gerar(tipo: string, s: Sessao, sp: Params, formato: string): Prom
         tabelas: [
           {
             titulo: 'Comissões',
-            colunas: [{ titulo: 'Venda', largura: 60 }, { titulo: 'Cliente', largura: 132 }, { titulo: 'Cota', largura: 56 }, { titulo: 'Crédito', largura: 84, direita: true }, { titulo: 'Flex', largura: 82 }, { titulo: 'Papel', largura: 92 }, { titulo: 'Parc.', largura: 34, direita: true }, { titulo: '%', largura: 50, direita: true }, { titulo: 'Comissão', largura: 80, direita: true }, { titulo: 'Paga por', largura: 72 }, { titulo: 'Situação', largura: 52 }],
-            linhas: e.comissoes.map((c) => [formatarData(c.cota.dataVenda), c.cota.clienteNome, `${c.cota.grupo}/${c.cota.cota}`, formatarMoeda(c.cota.credito), c.cota.snapModalidadeFlex?.nome ?? '-', (c.destino === 'EXPERT' ? 'Expert s/ Veterano' : ROTULO_DESTINO[c.destino as Destino]) + (c.ajusteDeId ? ' (aj.)' : ''), `${c.parcela}`, formatarPercentual(c.percentual), formatarMoeda(c.valor), c.pagaPelaWr ? 'WR' : 'administradora', ROTULO_COMISSAO[c.status] ?? '']),
+            colunas: [{ titulo: 'Venda', largura: 60 }, { titulo: 'Cliente', largura: 160 }, { titulo: 'Cota', largura: 56 }, { titulo: 'Crédito', largura: 84, direita: true }, { titulo: 'Flex', largura: 82 }, { titulo: 'Papel', largura: 64 }, { titulo: 'Parc.', largura: 34, direita: true }, { titulo: '%', largura: 50, direita: true }, { titulo: 'Comissão', largura: 80, direita: true }, { titulo: 'Paga por', largura: 72 }, { titulo: 'Situação', largura: 52 }],
+            linhas: e.comissoes.map((c) => [formatarData(c.cota.dataVenda), c.cota.clienteNome, `${c.cota.grupo}/${c.cota.cota}`, formatarMoeda(c.cota.credito), c.cota.snapModalidadeFlex?.nome ?? '-', ROTULO_DESTINO[c.destino as Destino] + (c.ajusteDeId ? ' (aj.)' : ''), `${c.parcela}`, formatarPercentual(c.percentual), formatarMoeda(c.valor), c.pagaPelaWr ? 'WR' : 'administradora', ROTULO_COMISSAO[c.status] ?? '']),
             total: ['Total pago pela WR', '', '', '', '', '', '', '', formatarMoeda(e.totalComissao), '', ''],
             vazio: 'Nenhuma comissão neste período.',
           },

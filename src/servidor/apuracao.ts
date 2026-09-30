@@ -191,12 +191,16 @@ interface Conferencia {
   naoPagar: Set<string>;
   /** Chaves que não serão pagas porque a venda foi cancelada (sem decisão manual de pagar). */
   canceladaNaoPaga: Set<string>;
+  /** Parcela → data da decisão "pagar" (é ela que libera a parcela que a WR não recebe). */
+  pagarEm: Map<number, Date>;
 }
 
 async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaComissao[]): Promise<Conferencia> {
-  const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set(), canceladaNaoPaga: new Set() };
+  const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set(), canceladaNaoPaga: new Set(), pagarEm: new Map() };
   if (cota.snapParcelasConferencia.length === 0) return r;
-  const decisoes = new Map((await tx.conferenciaParcela.findMany({ where: { cotaId: cota.id } })).map((c) => [c.parcela, c.decisao]));
+  const registros = await tx.conferenciaParcela.findMany({ where: { cotaId: cota.id } });
+  const decisoes = new Map(registros.map((c) => [c.parcela, c.decisao]));
+  for (const c of registros) if (c.decisao === 'PAGAR') r.pagarEm.set(c.parcela, c.decididoEm);
   r.desejadas = desejadas.filter((l) => {
     if (l.destino !== 'VENDEDOR' || !cota.snapParcelasConferencia.includes(l.parcela)) return true;
     const decisao = decisoes.get(l.parcela);
@@ -207,6 +211,40 @@ async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaC
     if (decisao !== 'PAGAR') r.aguardando.add(`VENDEDOR|${l.parcela}`);
     return true;
   });
+  return r;
+}
+
+/**
+ * Quando a comissão passa a ser devida (regra da WR): quando a parcela aparece no relatório da administradora.
+ * - WR paga (Iniciante, supervisão, gerência): linha do CV056E da cota (parcela; "inclusão" = 1ª).
+ * - Administradora paga (Veterano, Expert): linha do CV069E da cota para o CPF/CNPJ do titular.
+ * A base de clientes NÃO libera (conta antecipação como parcela paga). A data é a do relatório.
+ */
+interface Evidencias { wr: Map<number, Date>; adm: Map<string, Date> }
+
+async function evidenciasDosRelatorios(tx: Tx, cota: CotaApuracao): Promise<Evidencias> {
+  // Os relatórios são append-only: linha importada antes de a venda existir na carteira continua sem vínculo
+  // gravado e é encontrada aqui pelo mesmo grupo/cota (e contrato compatível) da mesma administradora.
+  const daCota = {
+    OR: [
+      { cotaId: cota.id },
+      { cotaId: null, grupo: cota.grupo, cota: cota.cota, OR: [{ contrato: null }, { contrato: cota.contrato }], importacao: { administradoraId: cota.administradoraId } },
+    ],
+  };
+  const [lancamentos, adm] = await Promise.all([
+    tx.lancamentoAdministradora.findMany({ where: { AND: [daCota, { tipo: 'COMISSAO_PARCELA' }] }, select: { parcela: true, dataReferencia: true, criadoEm: true } }),
+    tx.comissaoVendedorAdm.findMany({ where: daCota, select: { parcela: true, vendedorDocumento: true, vendedorId: true, dataReferencia: true, criadoEm: true } }),
+  ]);
+  // Linha antiga do CV069E sem o documento gravado: usa o do vendedor casado na importação.
+  const semDoc = [...new Set(adm.filter((l) => !l.vendedorDocumento && l.vendedorId).map((l) => l.vendedorId as string))];
+  const docPorVendedor = new Map((semDoc.length ? await tx.vendedor.findMany({ where: { id: { in: semDoc } }, select: { id: true, documento: true } }) : []).map((v) => [v.id, v.documento]));
+  const r: Evidencias = { wr: new Map(), adm: new Map() };
+  const guardar = <K>(m: Map<K, Date>, k: K, d: Date) => { const a = m.get(k); if (!a || d < a) m.set(k, d); };
+  for (const l of lancamentos) guardar(r.wr, l.parcela ?? 1, l.dataReferencia ?? l.criadoEm);
+  for (const l of adm) {
+    const doc = l.vendedorDocumento ?? (l.vendedorId ? docPorVendedor.get(l.vendedorId) : undefined);
+    if (doc) guardar(r.adm, `${doc}|${l.parcela ?? 1}`, l.dataReferencia ?? l.criadoEm);
+  }
   return r;
 }
 
@@ -224,6 +262,19 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
     await tx.comissaoApurada.update({ where: { id: c.id }, data: { status: 'CANCELADA', canceladaEm: agora, motivoCancelamento: motivo } });
     resumo.comissoesCanceladas++;
   };
+  const evid = await evidenciasDosRelatorios(tx, cota);
+  const documentoDe = new Map<string, string>();
+  if (cota.snapVendedor) documentoDe.set(cota.snapVendedor.id, cota.snapVendedor.documento);
+  if (cota.snapExpertVendedor) documentoDe.set(cota.snapExpertVendedor.id, cota.snapExpertVendedor.documento);
+  /** Data em que a parcela passou a ser devida, ou null se ainda não apareceu no relatório. */
+  const liberacao = (destino: string, parcela: number, pagaPelaWr: boolean, titularVendedorId: string | null): Date | null => {
+    if (destino === 'VENDEDOR' && cota.snapParcelasConferencia.includes(parcela)) return conferencia.pagarEm.get(parcela) ?? null;
+    if (pagaPelaWr) return evid.wr.get(parcela) ?? null;
+    const doc = titularVendedorId ? documentoDe.get(titularVendedorId) : undefined;
+    return doc ? evid.adm.get(`${doc}|${parcela}`) ?? null : null;
+  };
+  for (const d of desejadas) d.liberada = liberacao(d.destino, d.parcela, d.pagaPelaWr, d.titular.vendedorId) !== null;
+
   const segurar = (destino: string, parcela: number) => {
     if (!conferencia.aguardando.has(`${destino}|${parcela}`) || parcela > cota.parcelasPagas) return false;
     pendencias.push({
@@ -234,12 +285,19 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
     return true;
   };
   const liberarSeCabe = async (c: ComissaoApurada) => {
-    if (c.status === 'PREVISTA' && segurar(c.destino, c.parcela)) return;
-    if (c.status === 'PREVISTA' && c.parcela <= cota.parcelasPagas) {
-      await tx.comissaoApurada.update({ where: { id: c.id }, data: { status: 'LIBERADA', liberadaEm: agora, parcelasPagasNaLiberacao: cota.parcelasPagas } });
+    const em = liberacao(c.destino, c.parcela, c.pagaPelaWr, c.titularVendedorId);
+    if (c.status === 'LIBERADA' && !em) {
+      // Liberada pela regra antiga (base de clientes) sem o relatório: volta a prevista até o relatório chegar.
+      await tx.comissaoApurada.update({ where: { id: c.id }, data: { status: 'PREVISTA', liberadaEm: null, parcelasPagasNaLiberacao: null } });
+      c = { ...c, status: 'PREVISTA', liberadaEm: null };
+    }
+    if (c.status !== 'PREVISTA') return;
+    if (segurar(c.destino, c.parcela)) return;
+    if (em) {
+      await tx.comissaoApurada.update({ where: { id: c.id }, data: { status: 'LIBERADA', liberadaEm: em, parcelasPagasNaLiberacao: cota.parcelasPagas } });
       resumo.comissoesLiberadas++;
-    } else if (c.status === 'PREVISTA' && cota.cancelada) {
-      await cancelar(c, 'Venda cancelada: a parcela não será paga pelo cliente');
+    } else if (cota.cancelada) {
+      await cancelar(c, 'Venda cancelada: a parcela não apareceu no relatório da administradora e não será paga');
     }
   };
 
@@ -266,7 +324,7 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
       for (const c of abertas) await cancelar(c, motivo);
       if (d && (d.liberada || !cota.cancelada)) {
         const segura = segurar(d.destino, d.parcela);
-        await criarComissao(tx, cota.id, d, null, d.valor, d.memoria, segura ? 0 : cota.parcelasPagas, agora);
+        await criarComissao(tx, cota.id, d, null, d.valor, d.memoria, segura ? null : liberacao(d.destino, d.parcela, d.pagaPelaWr, d.titular.vendedorId), cota.parcelasPagas);
         resumo.comissoesCriadas++;
       }
       continue;
@@ -316,10 +374,11 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
         percentual: dec(congeladaDoTitular.percentual),
         valor,
         pagaPelaWr: congeladaDoTitular.pagaPelaWr,
-        liberada: originalCongelada.parcela <= cota.parcelasPagas,
+        liberada: true,
         memoria: memoriaBase,
       };
-      await criarComissao(tx, cota.id, linha, originalCongelada.id, valor, memoria, cota.parcelasPagas, agora);
+      // Ajuste de parcela que já estava em folha fechada: entra na próxima folha.
+      await criarComissao(tx, cota.id, linha, originalCongelada.id, valor, memoria, agora, cota.parcelasPagas);
       resumo.ajustesCriados++;
     }
     pendencias.push({
@@ -330,8 +389,8 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
   }
 }
 
-async function criarComissao(tx: Tx, cotaId: string, d: LinhaComissao, ajusteDeId: string | null, valor: Dec, memoria: unknown, parcelasPagas: number, agora: Date) {
-  const liberada = d.parcela <= parcelasPagas;
+async function criarComissao(tx: Tx, cotaId: string, d: LinhaComissao, ajusteDeId: string | null, valor: Dec, memoria: unknown, liberadaEm: Date | null, parcelasPagas: number) {
+  const liberada = liberadaEm !== null;
   await tx.comissaoApurada.create({
     data: {
       cotaId, parcela: d.parcela, destino: d.destino as DestinoComissao,
@@ -339,7 +398,7 @@ async function criarComissao(tx: Tx, cotaId: string, d: LinhaComissao, ajusteDeI
       titularPessoaId: d.titular.pessoaId, tabelaId: d.tabelaId,
       base: paraTexto(d.base), percentual: paraTexto(d.percentual), valor: paraTexto(valor),
       pagaPelaWr: d.pagaPelaWr, status: liberada ? 'LIBERADA' : 'PREVISTA',
-      liberadaEm: liberada ? agora : null, parcelasPagasNaLiberacao: liberada ? parcelasPagas : null,
+      liberadaEm, parcelasPagasNaLiberacao: liberada ? parcelasPagas : null,
       memoria: paraJson(memoria) ?? {}, ajusteDeId,
     },
   });

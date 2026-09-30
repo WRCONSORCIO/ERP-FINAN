@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { definirEscopoBase } from '@/servidor/servicos/regras';
 import { desligarVendedor } from '@/servidor/servicos/vendedores';
-import { apurarTudo, comissoesDa, csv, D, estrutura, importar, preparar, valores, vendedor } from './ajuda';
+import { D, apurarTudo, comissoesDa, csv, estrutura, importar, importarRelatorio, preparar, relatorioAdm, valores, vendedor } from './ajuda';
 
 const VETERANO_DOC = '11222333000181';
 const EXPERT_DOC = '11444777000161';
@@ -20,6 +20,9 @@ describe('Expert recebe sobre as vendas do CNPJ Veterano da mesma pessoa', () =>
     ]));
     const antes = await prisma.cota.findFirstOrThrow({ where: { cota: '1' } });
     const depois = await prisma.cota.findFirstOrThrow({ where: { cota: '2' } });
+    // 1ª parcela no relatório que a administradora paga: uma linha para o CNPJ Veterano, outra para o CNPJ Expert.
+    const p1 = { grupo: '1', cota: '2', contrato: '10002I10', credito: 100000, parcela: 1, data: '20/09/2026', venda: '10/09/2026' };
+    await importarRelatorio(admin, administradoraId, relatorioAdm([{ ...p1, doc: VETERANO_DOC }, { ...p1, doc: EXPERT_DOC, valor: 300 }]));
 
     expect(antes.snapExpertVendedorId).toBeNull();
     expect((await comissoesDa(antes.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(0);

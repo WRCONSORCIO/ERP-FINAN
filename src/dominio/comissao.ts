@@ -172,7 +172,7 @@ export function calcularComissoes(e: EntradaComissao): { linhas: LinhaComissao[]
           titular: { pessoaId: d.titular.pessoaId, vendedorId: d.titular.vendedorId, nome: d.titular.nome },
           quemPaga: paga ? 'WR' : 'ADMINISTRADORA',
           liberacao: {
-            regra: 'Liberada quando a base de clientes registra a parcela como paga pelo cliente',
+            regra: 'Liberada quando a parcela aparece no relatório da administradora (CV056E, para o que a WR recebe e repassa; CV069E, para o que a administradora paga direto). A base de clientes não libera: antecipação conta como parcela paga lá.',
             parcelasPagasPeloCliente: e.cota.parcelasPagas,
             liberada,
           },

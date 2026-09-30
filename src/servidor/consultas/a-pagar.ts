@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { dec, ZERO, type Dec } from '@/lib/dinheiro';
-import { competenciaDe, fimExclusivo, hoje, periodoDoMes } from '@/lib/datas';
+import { competenciaDe, hoje, periodoDoMes } from '@/lib/datas';
 import { escopoComissoes, escopoCotas, escopoEstornos, exigir, type Sessao } from '../contexto';
 
 export interface LinhaBeneficiario {
@@ -54,14 +54,15 @@ export async function folhas(s: Sessao) {
 }
 
 /** Prévia do fechamento: o que entraria na folha da competência (só o liberado, fora de folha, pago pela WR). */
-export async function previaFechamento(s: Sessao, competencia: string) {
+export async function previaFechamento(s: Sessao, competencia: string, relatoriosAte?: Date | null) {
   exigir(s, 'comissoes', 'editar');
   const per = periodoDoMes(competencia);
   if (!per) return null;
+  const corte = relatoriosAte ?? new Date(`${competencia}-10T00:00:00Z`);
   const r = await prisma.comissaoApurada.aggregate({
-    where: { status: 'LIBERADA', pagaPelaWr: true, folhaId: null, liberadaEm: { lt: fimExclusivo(per) } }, _sum: { valor: true }, _count: true,
+    where: { status: 'LIBERADA', pagaPelaWr: true, folhaId: null, liberadaEm: { lt: new Date(corte.getTime() + 86_400_000) } }, _sum: { valor: true }, _count: true,
   });
-  return { competencia, quantidade: r._count, total: dec(r._sum.valor ?? 0) };
+  return { competencia, corte, quantidade: r._count, total: dec(r._sum.valor ?? 0) };
 }
 
 export function competenciaPadrao(): string {

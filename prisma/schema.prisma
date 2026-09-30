@@ -798,25 +798,28 @@ model LancamentoAdministradora {
 }
 
 model ComissaoVendedorAdm {
-  id             String    @id @default(cuid())
-  importacaoId   String
-  cotaId         String?
-  vendedorId     String?
-  vendedorTexto  String?
-  grupo          String
-  cota           String
-  contrato       String?
-  parcela        Int?
-  valor          Decimal   @db.Decimal(18, 2)
-  dataReferencia DateTime? @db.Date
-  hash           String    @unique
-  linhaOriginal  String
-  criadoEm       DateTime  @default(now())
+  id                String    @id @default(cuid())
+  importacaoId      String
+  cotaId            String?
+  vendedorId        String?
+  vendedorTexto     String?
+  // CPF/CNPJ do cabeçalho "VENDEDOR (CPF/CNPJ)" do CV069E: é por ele que a linha libera a comissão certa.
+  vendedorDocumento String?
+  grupo             String
+  cota              String
+  contrato          String?
+  parcela           Int?
+  valor             Decimal   @db.Decimal(18, 2)
+  dataReferencia    DateTime? @db.Date
+  hash              String    @unique
+  linhaOriginal     String
+  criadoEm          DateTime  @default(now())
 
   importacao Importacao @relation(fields: [importacaoId], references: [id])
   cotaRef    Cota?      @relation(fields: [cotaId], references: [id])
 
   @@index([cotaId])
+  @@index([grupo, cota])
   @@map("comissao_vendedor_adm")
 }
 

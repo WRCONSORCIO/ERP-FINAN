@@ -82,3 +82,54 @@ export async function comissoesDa(cotaId: string) {
 
 export const valores = (l: Array<{ destino: string; parcela: number; valor: { toFixed(n: number): string }; status: string }>) =>
   l.map((c) => `${c.destino}:${c.parcela}:${c.valor.toFixed(2)}:${c.status}`);
+
+export const PDF_TESTE = new Uint8Array(Buffer.from('%PDF-1.4 relatório de teste'));
+const moeda = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const docFmt = (d: string) => (d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`);
+
+export interface ParcelaRelatorio {
+  grupo: string; cota: string; contrato: string; credito: number; parcela: number; data: string; venda: string;
+  /** CPF/CNPJ do vendedor no cabeçalho do relatório. */ doc: string; valor?: number;
+}
+
+/** CV056E (comissão da WR) no layout real: uma venda em 3 linhas abaixo do vendedor. Parcela 1 = "inclusão". */
+export function relatorioWr(itens: ParcelaRelatorio[]): string[] {
+  const linhas = ['SERVOPA ADMINISTRADORA DE CONSORCIOS LTDA CV056E HORA: 20:12 PAGINA: 1'];
+  let total = 0;
+  for (const i of itens) {
+    const v = i.valor ?? 100;
+    total += v;
+    linhas.push(
+      `VENDEDOR (CPF/CNPJ): ${docFmt(i.doc)} - VENDEDOR TESTE`,
+      `${i.contrato} E CLIENTE ${i.grupo}/${i.cota} / 31 90000.0000`,
+      `${i.grupo.padStart(4, '0')}.${i.cota.padStart(4, '0')}.1 CREDITO P/IMOVEL 7 ${moeda(i.credito)} ${moeda(v)} 0,00 0,00 1,0000`,
+      i.parcela === 1 ? `INCLUSAO DE PLANO ${i.data} ${i.venda} I` : `PAGAMENTO COMISSAO ${i.parcela} ${i.data} ${i.venda} I`,
+      `Total do Vendedor ......: ${moeda(v)} 0,00 0,00`,
+    );
+  }
+  void total;
+  return linhas;
+}
+
+/** CV069E (o que a administradora paga ao vendedor) no layout real. Parcela 1 = sem número. */
+export function relatorioAdm(itens: ParcelaRelatorio[]): string[] {
+  const linhas = ['SERVOPA ADMINISTRADORA DE CONSORCIOS LTDA CV069E HORA: 20:11 PAGINA: 1'];
+  for (const i of itens) {
+    const v = i.valor ?? 100;
+    linhas.push(
+      `VENDEDOR (CPF/CNPJ): ${docFmt(i.doc)} - VENDEDOR TESTE`,
+      `${i.grupo.padStart(4, '0')}.${i.cota.padStart(4, '0')} -1 E CLIENTE ${i.grupo}/${i.cota} / 31 90000.0000`,
+      `${i.contrato} ${moeda(i.credito)} ${moeda(v)} 0,00 0,00 0,4000`,
+      i.parcela === 1 ? `${i.data} ${i.venda} I` : `${i.parcela} ${i.data} ${i.venda} I`,
+      `Total do Vendedor ......: ${moeda(v)} 0,00 0,00`,
+    );
+  }
+  return linhas;
+}
+
+let seqPdf = 0;
+/** Importa um relatório PDF de teste (o conteúdo vem pronto em linhas) e esvazia a fila. */
+export async function importarRelatorio(s: Sessao, administradoraId: string, linhas: string[]) {
+  seqPdf++;
+  return importar(s, administradoraId, new Uint8Array(Buffer.from(`%PDF-1.4 teste ${seqPdf} ${Date.now()}`)), `relatorio-${seqPdf}.pdf`, async () => linhas);
+}

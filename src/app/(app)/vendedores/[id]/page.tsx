@@ -7,6 +7,7 @@ import { exigirPagina } from '@/servidor/sessao';
 import { fichaDaPessoa } from '@/servidor/consultas/vendedores';
 import { opcoesDeFormulario } from '@/servidor/consultas/opcoes';
 import { Aviso, BarraProgresso, Campo, Cartao, DataCurta, Dinheiro, Etiqueta, LinkBotao, Monograma, Pagina, Secao, Traco } from '@/ui/base';
+import { BotaoVoltar } from '@/ui/botao-voltar';
 import { Dobra } from '@/ui/dobra';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import {
@@ -32,6 +33,7 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
       descricao="Um bloco para cada CPF/CNPJ da pessoa: cada um tem sua categoria e sua equipe. A produção e os pagamentos somam todos."
       acoes={
         <>
+          <BotaoVoltar destino="/vendedores" />
           {pode(s.perfil, 'comissoes') ? <LinkBotao href={`/vendedores/${id}/extrato`} icone="auditoria">Extrato</LinkBotao> : null}
           <LinkBotao href={`/clientes?pessoa=${id}`} icone="clientes">Vendas desta pessoa</LinkBotao>
         </>

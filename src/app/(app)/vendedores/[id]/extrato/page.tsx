@@ -13,6 +13,7 @@ import { MemoriaDeCalculo } from '@/ui/memoria';
 import { queryDe } from '@/ui/paginacao';
 import { ROTULO_COMISSAO, ROTULO_ESTORNO } from '@/ui/rotulos';
 import { SeletorDePeriodo } from '@/ui/seletor-periodo';
+import { BotaoVoltar } from '@/ui/botao-voltar';
 
 export const metadata: Metadata = { title: 'Extrato do vendedor' };
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,7 @@ export default async function Extrato({ params, searchParams }: { params: Promis
     <Pagina
       titulo={`Extrato · ${e.pessoa.nome}`}
       descricao={<>Comissões liberadas e estornos de <strong>{periodo.rotulo}</strong>, com o mesmo detalhe da tela: cada venda, cada parcela, o percentual aplicado. Documentos: {e.pessoa.documentos.map((d) => `${d.tipoDocumento} ${formatarDocumento(d.documento)}`).join(' · ') || '—'}.</>}
-      acoes={<><Suspense><SeletorDePeriodo /></Suspense><LinkBotao href={`/exportar/extrato${queryDe(sp, { pessoa: id })}`} icone="download" download variante="primario">Baixar PDF</LinkBotao><LinkBotao href={`/vendedores/${id}`} variante="fantasma">Ficha</LinkBotao></>}
+      acoes={<><BotaoVoltar destino={`/vendedores/${id}`} /><Suspense><SeletorDePeriodo /></Suspense><LinkBotao href={`/exportar/extrato${queryDe(sp, { pessoa: id })}`} icone="download" download variante="primario">Baixar PDF</LinkBotao></>}
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Cartao destaque rotulo="Comissão paga pela WR" valor={<Dinheiro valor={e.totalComissao} />} detalhe="liberada no período" />

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { definirEscopoBase } from '@/servidor/servicos/regras';
 import { desligarVendedor, reativarVendedor } from '@/servidor/servicos/vendedores';
-import { D, apurarTudo, comissoesDa, csv, estrutura, importar, importarCanceladas, importarRelatorio, preparar, relatorioWr, valores, vendedor } from './ajuda';
+import { D, apurarTudo, comissoesDa, csv, estrutura, importar, importarCanceladas, importarRelatorio, preparar, relatorioWr, vendedor } from './ajuda';
 
 const VETERANO = '11222333000181';
 const INICIANTE = '52998224725';
@@ -41,7 +41,7 @@ describe('regras da WR: dinheiro só pelo relatório; desligado não recebe nem 
     expect(await prisma.estorno.count({ where: { status: { not: 'INVALIDADO' } } })).toBe(2);
   });
 
-  it('Iniciante desligado: o que saiu no relatório até o desligamento continua devido; o resto não é pago', async () => {
+  it('Iniciante desligado não recebe mais nada que não foi pago (nem o já liberado); supervisão/gerência seguem recebendo', async () => {
     const { admin, administradoraId, cat } = await preparar();
     const est = await estrutura(admin, 'A');
     const v = await vendedor(admin, { nome: 'Ana', tipo: 'CPF', doc: INICIANTE, categoriaId: cat.INICIANTE, equipeId: est.equipeId });
@@ -53,8 +53,7 @@ describe('regras da WR: dinheiro só pelo relatório; desligado não recebe nem 
     await apurarTudo();
     // A 3ª parcela só aparece no relatório depois do desligamento.
     await importarRelatorio(admin, administradoraId, relatorioWr([{ ...p, parcela: 3, data: '20/09/2026' }]));
-    const doVendedor = (await comissoesDa(cota.id)).filter((c) => c.destino === 'VENDEDOR');
-    expect(valores(doVendedor).map((x) => x.split(':').slice(1).join(':'))).toEqual([expect.stringMatching(/^1:.*:LIBERADA$/)]);
+    expect((await comissoesDa(cota.id)).filter((c) => c.destino === 'VENDEDOR')).toHaveLength(0);
     expect(await conferencias(cota.id)).toBe(0); // a 2ª parcela nem vai para a conferência
     const canceladas = await prisma.comissaoApurada.findMany({ where: { cotaId: cota.id, destino: 'VENDEDOR', status: 'CANCELADA' } });
     expect(canceladas.some((c) => /desligado/.test(c.motivoCancelamento ?? ''))).toBe(true);

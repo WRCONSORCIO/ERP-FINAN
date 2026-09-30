@@ -26,7 +26,7 @@ const TERMOS: Array<[string, string]> = [
   ['Folha', 'O fechamento do mês com as comissões liberadas. Fechada, não muda mais.'],
   ['Ajuste', 'Correção de uma comissão que já estava em folha fechada. Entra na folha seguinte (pode ser positiva ou negativa).'],
   ['Estorno', 'Parte da comissão que volta quando a venda é cancelada, conforme as regras de Configurações › Estornos. Só é cobrado depois que o cancelamento aparece num relatório de comissão. Vendedor desligado não paga estorno.'],
-  ['Desligado', 'Vendedor que saiu da WR: não recebe mais comissão (só o que saiu nos relatórios até a data do desligamento) e não paga estorno.'],
+  ['Desligado', 'Vendedor que saiu da WR: não recebe mais nenhuma comissão que ainda não foi paga e não paga estorno. Supervisão e gerência das vendas dele continuam recebendo.'],
   ['Período de recuperação', 'Período registrado na ficha do vendedor. Vendas feitas nele seguem a regra de estorno de recuperação.'],
   ['“A partir de”', 'Toda regra e todo cadastro valem a partir de uma data. Cada venda usa o que valia na data dela; mudar hoje não altera o que já foi calculado.'],
   ['Vendas sem comissão (pendências)', 'Vendas que não puderam ser calculadas por falta de cadastro ou regra. O dinheiro não some: fica aguardando até ser resolvido.'],

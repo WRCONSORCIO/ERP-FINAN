@@ -184,8 +184,8 @@ export async function apurarCota(tx: Tx, cotaId: string, agora = new Date()): Pr
 type CotaApuracao = Prisma.CotaGetPayload<{ include: { snapCategoria: true; snapSegmento: true; snapModalidadeFlex: true; snapVendedor: { include: { pessoa: true } }; snapExpertVendedor: { include: { pessoa: true } }; snapExpertCategoria: true } }>;
 
 /**
- * Regra da WR: vendedor DESLIGADO não recebe mais comissão (parcela que só aparece no relatório depois da data do
- * desligamento não é paga) e não paga estorno. Vale para o titular VENDEDOR e para o CNPJ Expert.
+ * Regra da WR: vendedor DESLIGADO não recebe mais nada (o que não entrou em folha fechada é cancelado) e não paga
+ * estorno. Vale para o titular VENDEDOR e para o CNPJ Expert; supervisão e gerência da venda seguem normais.
  */
 function desligamentoDo(cota: CotaApuracao, vendedorId: string | null): Date | null {
   if (!vendedorId) return null;
@@ -311,10 +311,9 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
     return doc ? evid.adm.get(`${doc}|${parcela}`) ?? null : null;
   };
   const liberacao = (destino: string, parcela: number, pagaPelaWr: boolean, titularVendedorId: string | null): Date | null => {
-    const em = devidaEm(destino, parcela, pagaPelaWr, titularVendedorId);
-    const desligadoEm = desligamentoDo(cota, titularVendedorId);
-    // Desligado: só é devido o que apareceu no relatório até a data do desligamento.
-    return em && desligadoEm && em > desligadoEm ? null : em;
+    // Desligado não recebe mais nada que ainda não entrou em folha (supervisão/gerência seguem normais).
+    if (desligamentoDo(cota, titularVendedorId)) return null;
+    return devidaEm(destino, parcela, pagaPelaWr, titularVendedorId);
   };
   /** A linha não será mais paga se não tiver relatório: venda cancelada ou titular desligado. */
   const encerrada = (titularVendedorId: string | null) => cota.cancelada || desligamentoDo(cota, titularVendedorId) !== null;

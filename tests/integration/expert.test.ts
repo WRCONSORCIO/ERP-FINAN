@@ -56,17 +56,16 @@ describe('Expert recebe sobre as vendas do CNPJ Veterano da mesma pessoa', () =>
     expect((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT').map((c) => c.valor.toFixed(2))).toEqual(['300.00', '100.00', '100.00']);
     expect((await comissoesDa(c2.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(3);
 
-    // A 1ª parcela da venda 1 saiu no relatório antes do desligamento: continua devida.
+    // A 1ª parcela da venda 1 saiu no relatório antes do desligamento, mas não entrou em folha.
     const p1 = { grupo: '2', cota: '1', contrato: '02001I10', credito: 100000, parcela: 1, data: '12/09/2026', venda: '10/09/2026', doc: EXPERT_DOC, valor: 300 };
     await importarRelatorio(admin, administradoraId, relatorioAdm([p1]));
     await desligarVendedor(admin, { vendedorId: exp.id, data: D('2026-09-15'), motivo: 'deixou de ser Expert' });
     await apurarTudo();
-    // Regra da WR: desligado não recebe mais comissão — só fica o que já tinha saído no relatório até o desligamento.
-    expect(valores((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT'))).toEqual(['EXPERT:1:300.00:LIBERADA']);
+    // Regra da WR: desligou, não recebe mais nada que ainda não foi pago.
+    expect((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(0);
     expect((await comissoesDa(c2.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(0);
-    // Parcela que só aparece no relatório depois do desligamento não é paga.
     await importarRelatorio(admin, administradoraId, relatorioAdm([{ ...p1, parcela: 3, data: '20/09/2026', valor: 100 }]));
-    expect(valores((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT'))).toEqual(['EXPERT:1:300.00:LIBERADA']);
+    expect((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(0);
   });
 
   it('cancelamento: o Expert também devolve (estorno próprio, pela regra do Expert)', async () => {

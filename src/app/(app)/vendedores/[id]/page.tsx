@@ -236,7 +236,7 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                   <Dobra chave={`desl-${doc.id}`} titulo={doc.status === 'ATIVO' ? 'Desligar' : 'Reativar'}>
                     <div className="p-3">
                       {doc.status === 'ATIVO' ? (
-                        <FormularioAcao acao={desligarAcao} rotulo="Desligar" perigo confirmacao="Sai da lista de ativos. A partir da data do desligamento não recebe mais comissão (o que já saiu nos relatórios até essa data continua devido) e não paga estorno. A pessoa só fica desligada quando todos os CPF/CNPJ dela forem desligados.">
+                        <FormularioAcao acao={desligarAcao} rotulo="Desligar" perigo confirmacao="Sai da lista de ativos. Não recebe mais nenhuma comissão que ainda não foi paga e não paga estorno. Supervisão e gerência das vendas dele continuam recebendo. A pessoa só fica desligada quando todos os CPF/CNPJ dela forem desligados.">
                           <input type="hidden" name="vendedorId" value={doc.id} />
                           <Campo rotulo="Data" nome={`dd-${doc.id}`}><input id={`dd-${doc.id}`} name="data" type="date" className="campo" defaultValue={opcoes.hojeISO} required /></Campo>
                           <Campo rotulo="Motivo" nome={`dm-${doc.id}`}><input id={`dm-${doc.id}`} name="motivo" className="campo" required /></Campo>

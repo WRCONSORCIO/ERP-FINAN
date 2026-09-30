@@ -262,6 +262,7 @@ model Administradora {
 
   cotas     Cota[]
   importacoes Importacao[]
+  cartas    Carta[]
 
   @@map("administradora")
 }
@@ -1174,4 +1175,107 @@ model Anexo {
 
   @@index([entidade, entidadeId])
   @@map("anexo")
+}
+
+// ============================================================
+// CARTAS CONTEMPLADAS — compra/revenda/intermediação de cotas JÁ contempladas.
+// Processo de negócio distinto da venda de cota nova (Cota/Vendedor acima):
+// não há sobreposição real, por isso é módulo isolado, reaproveitando só o
+// que é genérico (Administradora). "Vendedor" aqui continua o nome na UI,
+// mas o model é VendedorCarta para não colidir com o Vendedor existente.
+// ============================================================
+
+enum TipoNegociacaoCarta {
+  COMPRA_VENDA  // compramos do cliente e revendemos depois (fica em estoque até vender)
+  INTERMEDIACAO // ponta a ponta, nunca passa pelo caixa/estoque da empresa
+}
+
+enum StatusCarta {
+  ESTOQUE
+  VENDIDA
+  TRANSFERIDA
+}
+
+model ClienteCarta {
+  id            String        @id @default(cuid())
+  nome          String
+  documento     String        @unique
+  tipoDocumento TipoDocumento
+  telefone      String?
+  email         String?
+  criadoPorId   String?
+  criadoEm      DateTime      @default(now())
+  atualizadoEm  DateTime      @updatedAt
+
+  cartasVendidas  Carta[] @relation("ClienteVendedorCarta")
+  cartasCompradas Carta[] @relation("ClienteCompradorCarta")
+
+  @@index([nome])
+  @@map("cliente_carta")
+}
+
+// UI: "Vendedor", escopado em Cartas › Vendedores. Nome Prisma distinto de
+// `Vendedor` (venda de cota nova) para não colidir domínios.
+model VendedorCarta {
+  id           String   @id @default(cuid())
+  nome         String
+  telefone     String?
+  email        String?
+  ativo        Boolean  @default(true)
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  cartas Carta[]
+
+  @@map("vendedor_carta")
+}
+
+model Carta {
+  id                String              @id @default(cuid())
+  codigo            String              @unique // "CART-0001", via sequência (carta_codigo_seq)
+
+  administradoraId  String
+  tipoNegociacao    TipoNegociacaoCarta @default(COMPRA_VENDA)
+  status            StatusCarta         @default(ESTOQUE)
+
+  vendedorCartaId     String?
+  clienteVendedorId   String
+  clienteCompradorId  String?
+
+  valorCarta        Decimal  @db.Decimal(18, 2) @default(0)
+  valorCompra       Decimal  @db.Decimal(18, 2) @default(0)
+  valorVenda        Decimal? @db.Decimal(18, 2)
+  valorParcela      Decimal  @db.Decimal(18, 2) @default(0)
+  parcelasPagas     Int      @default(0)
+  parcelasAPagar    Int      @default(0)
+  comissaoVendedor  Decimal  @db.Decimal(18, 2) @default(0)
+
+  dataCompra        DateTime  @db.Date
+  dataVenda         DateTime? @db.Date
+  dataTransferencia DateTime? @db.Date
+
+  observacoes String?
+
+  // Gravado pelo serviço a cada criação/alteração via calcularLucro() (src/dominio/cartas.ts),
+  // NÃO uma coluna "generated always" do Postgres — mantido real pra permitir SUM/ORDER BY
+  // sem recomputar em memória, seguindo o padrão de dinheiro deste repo (cálculo em código, não em trigger/coluna gerada).
+  lucro Decimal? @db.Decimal(18, 2)
+
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  administradora   Administradora @relation(fields: [administradoraId], references: [id])
+  vendedorCarta    VendedorCarta? @relation(fields: [vendedorCartaId], references: [id])
+  clienteVendedor  ClienteCarta   @relation("ClienteVendedorCarta", fields: [clienteVendedorId], references: [id])
+  clienteComprador ClienteCarta?  @relation("ClienteCompradorCarta", fields: [clienteCompradorId], references: [id])
+
+  @@index([status])
+  @@index([tipoNegociacao])
+  @@index([administradoraId])
+  @@index([vendedorCartaId])
+  @@index([dataCompra])
+  @@index([dataVenda])
+  @@map("carta")
 }

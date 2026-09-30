@@ -13,6 +13,10 @@ export function DecidirConferencia({ cotaId, parcela }: { cotaId: string; parcel
         <input type="hidden" name="cotaId" value={cotaId} /><input type="hidden" name="parcela" value={parcela} /><input type="hidden" name="decisao" value="NAO_PAGAR" />
         <input name="motivo" aria-label="Motivo" placeholder="Por que não pagar" className="campo w-52" required />
       </FormularioAcao>
+      <FormularioAcao acao={decidirConferenciaAcao} rotulo="Ainda não pagou" emLinha confirmacao="Sai da lista agora e volta sozinho quando a base mostrar mais uma parcela paga pelo cliente (ex.: foi antecipação, não a parcela da sequência).">
+        <input type="hidden" name="cotaId" value={cotaId} /><input type="hidden" name="parcela" value={parcela} /><input type="hidden" name="decisao" value="AGUARDAR" />
+        <input name="motivo" aria-label="Motivo" placeholder="Ex.: foi antecipação" defaultValue="Ainda não pagou a parcela da sequência" className="campo w-52" required />
+      </FormularioAcao>
     </div>
   );
 }

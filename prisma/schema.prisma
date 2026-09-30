@@ -194,6 +194,7 @@ enum TipoPendencia {
 enum DecisaoConferencia {
   PAGAR
   NAO_PAGAR
+  AGUARDAR
 }
 
 enum StatusDivergencia {
@@ -519,6 +520,8 @@ model Cota {
   credito                Decimal   @db.Decimal(18, 2)
   dataVenda              DateTime  @db.Date
   parcelasPagas          Int
+  // Das parcelas pagas, quantas foram antecipação (o cliente pagou as últimas): não contam na sequência.
+  parcelasAntecipadas    Int       @default(0)
   situacao               String // texto exato enviado pela administradora
   cancelada              Boolean   @default(false)
   dataCancelamento       DateTime? @db.Date
@@ -798,25 +801,28 @@ model LancamentoAdministradora {
 }
 
 model ComissaoVendedorAdm {
-  id             String    @id @default(cuid())
-  importacaoId   String
-  cotaId         String?
-  vendedorId     String?
-  vendedorTexto  String?
-  grupo          String
-  cota           String
-  contrato       String?
-  parcela        Int?
-  valor          Decimal   @db.Decimal(18, 2)
-  dataReferencia DateTime? @db.Date
-  hash           String    @unique
-  linhaOriginal  String
-  criadoEm       DateTime  @default(now())
+  id                String    @id @default(cuid())
+  importacaoId      String
+  cotaId            String?
+  vendedorId        String?
+  vendedorTexto     String?
+  // CPF/CNPJ do cabeçalho "VENDEDOR (CPF/CNPJ)" do CV069E: é por ele que a linha libera a comissão certa.
+  vendedorDocumento String?
+  grupo             String
+  cota              String
+  contrato          String?
+  parcela           Int?
+  valor             Decimal   @db.Decimal(18, 2)
+  dataReferencia    DateTime? @db.Date
+  hash              String    @unique
+  linhaOriginal     String
+  criadoEm          DateTime  @default(now())
 
   importacao Importacao @relation(fields: [importacaoId], references: [id])
   cotaRef    Cota?      @relation(fields: [cotaId], references: [id])
 
   @@index([cotaId])
+  @@index([grupo, cota])
   @@map("comissao_vendedor_adm")
 }
 
@@ -1205,13 +1211,15 @@ model Anexo {
  * Decisão manual sobre pagar ao vendedor uma parcela que a WR não recebe da administradora (ex.: 2ª do Iniciante).
  */
 model ConferenciaParcela {
-  id            String             @id @default(cuid())
-  cotaId        String
-  parcela       Int
-  decisao       DecisaoConferencia
-  motivo        String
-  decididoPorId String
-  decididoEm    DateTime           @default(now())
+  id                String             @id @default(cuid())
+  cotaId            String
+  parcela           Int
+  decisao           DecisaoConferencia
+  // AGUARDAR: quantas parcelas o cliente tinha pago em sequência na decisão; volta à lista quando aumentar.
+  parcelasNaDecisao Int?
+  motivo            String
+  decididoPorId     String
+  decididoEm        DateTime           @default(now())
 
   cota        Cota    @relation(fields: [cotaId], references: [id])
   decididoPor Usuario @relation(fields: [decididoPorId], references: [id])

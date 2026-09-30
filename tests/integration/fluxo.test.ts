@@ -5,10 +5,10 @@ import { definirEscopoBase } from '@/servidor/servicos/regras';
 import { movimentarEstorno } from '@/servidor/servicos/estornos';
 import { decidirConferencia, resolverDivergencia, transferirVenda } from '@/servidor/servicos/cotas';
 import { vincularNomeImportado } from '@/servidor/servicos/vendedores';
-import { apurarTudo, comissoesDa, csv, D, estrutura, importar, preparar, valores, vendedor } from './ajuda';
+import { apurarTudo, cancelamentoWr, comissoesDa, csv, D, estrutura, importar, importarRelatorio, preparar, relatorioAdm, relatorioWr, valores, vendedor } from './ajuda';
 
 describe('fluxo financeiro completo', () => {
-  it('importa, casa vendedor por documento, congela, apura e libera pela parcela paga', async () => {
+  it('importa, casa vendedor por documento, congela, apura e libera quando a parcela vem no relatório da WR', async () => {
     const { admin, administradoraId, cat } = await preparar();
     const est = await estrutura(admin, 'A');
     const ana = await vendedor(admin, { nome: 'Ana Paula Souza', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
@@ -29,6 +29,11 @@ describe('fluxo financeiro completo', () => {
     expect(cotaA.snapPagaPelaWr).toBe(true);
 
     // Iniciante Imóveis: 0,5/0,4/0,3/0,3 · Supervisão 0,3/—/0,1/0,1 · Gerência 0,3 — base = 100.000 × 50% = 50.000
+    // A base diz 1 parcela paga, mas a comissão só é devida quando a parcela vem no relatório da administradora.
+    expect(valores(await comissoesDa(cotaA.id)).every((v) => v.endsWith(':PREVISTA'))).toBe(true);
+    await importarRelatorio(admin, administradoraId, relatorioWr([
+      { grupo: '1564', cota: '969', contrato: '12345I10', credito: 100000, parcela: 1, data: '10/10/2026', venda: '10/09/2026', doc: '52998224725' },
+    ]));
     expect(valores(await comissoesDa(cotaA.id))).toEqual([
       'VENDEDOR:1:250.00:LIBERADA', 'VENDEDOR:2:200.00:PREVISTA', 'VENDEDOR:3:150.00:PREVISTA', 'VENDEDOR:4:150.00:PREVISTA',
       'SUPERVISAO:1:150.00:LIBERADA', 'SUPERVISAO:3:50.00:PREVISTA', 'SUPERVISAO:4:50.00:PREVISTA',
@@ -36,6 +41,7 @@ describe('fluxo financeiro completo', () => {
     ]);
     const c1 = (await comissoesDa(cotaA.id))[0];
     expect(c1?.parcelasPagasNaLiberacao).toBe(1);
+    expect(c1?.liberadaEm?.toISOString().slice(0, 10)).toBe('2026-10-10'); // data do relatório, não da importação
     expect((c1?.memoria as { formula: string }).formula).toContain('= R$ 250,00');
 
     // Vendedor sem cadastro: pendência, sem comissão
@@ -88,11 +94,16 @@ describe('fluxo financeiro completo', () => {
     const bruno = await vendedor(admin, { nome: 'Bruno', tipo: 'CPF', doc: '11144477735', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
     await importar(admin, administradoraId, csv([{ grupo: '10', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '52998224725' }]));
     const cota = await prisma.cota.findFirstOrThrow();
+    // Sem relatório não há o que pagar; o relatório da WR de 10/09 traz a 1ª parcela.
+    await expect(fecharFolha(admin, { competencia: '2026-09' })).rejects.toThrow(/Não há comissão de relatório/);
+    await importarRelatorio(admin, administradoraId, relatorioWr([
+      { grupo: '10', cota: '1', contrato: '10001I10', credito: 100000, parcela: 1, data: '10/09/2026', venda: '10/09/2026', doc: '52998224725' },
+    ]));
 
-    const folha = await fecharFolha(admin, { competencia: '2026-09' });
+    const folha = await fecharFolha(admin, { competencia: '2026-09' }); // corte padrão: relatórios até 10/09
     expect(folha.quantidade).toBe(3); // vendedor, supervisão e gerência da 1ª parcela
     expect(folha.total.toFixed(2)).toBe('550.00');
-    await expect(fecharFolha(admin, { competencia: '2026-09' })).rejects.toThrow(/Não há comissão liberada/);
+    await expect(fecharFolha(admin, { competencia: '2026-09' })).rejects.toThrow(/Não há comissão de relatório/);
     await marcarFolhaPaga(admin, { folhaId: folha.id, dataPagamento: D('2026-09-30'), valorPago: '550.00', referencia: 'TED 123', observacao: null });
     expect((await prisma.comissaoApurada.findMany({ where: { folhaId: folha.id } })).every((c) => c.status === 'PAGA')).toBe(true);
 
@@ -120,6 +131,10 @@ describe('fluxo financeiro completo', () => {
     const linha = { grupo: '20', cota: '5', credito: '200.000,00', venda: '05/09/2026', pagas: 1, docVendedor: '11.222.333/0001-81', flex: 'INTEGRAL' };
     await importar(admin, administradoraId, csv([linha]));
     const cota = await prisma.cota.findFirstOrThrow();
+    // 1ª parcela nos relatórios: CV069E (administradora paga o Veterano) e CV056E (a WR recebe e paga a gerência).
+    const p1 = { grupo: '20', cota: '5', contrato: '20005I10', credito: 200000, parcela: 1, data: '10/09/2026', venda: '05/09/2026', doc: '11222333000181' };
+    await importarRelatorio(admin, administradoraId, relatorioAdm([p1]));
+    await importarRelatorio(admin, administradoraId, relatorioWr([p1]));
     // Veterano: paga pela administradora (base do estorno) — 200.000 × 0,8% = 1.600; gerência 0,3% = 600 pela WR
     expect(valores(await comissoesDa(cota.id))).toEqual([
       'VENDEDOR:1:1600.00:LIBERADA', 'VENDEDOR:3:800.00:PREVISTA', 'VENDEDOR:4:800.00:PREVISTA', 'VENDEDOR:6:800.00:PREVISTA', 'GERENCIA:1:600.00:LIBERADA',
@@ -135,12 +150,16 @@ describe('fluxo financeiro completo', () => {
     const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
     await apurarTudo();
+    // Cancelada só na base: o estorno ainda não existe (regra da WR: só depois de constar em relatório de comissão).
+    expect(await prisma.estorno.count()).toBe(0);
+    await importarRelatorio(admin, administradoraId, cancelamentoWr({ grupo: '20', cota: '5', contrato: '20005I10', data: '05/10/2026', venda: '05/09/2026', doc: '11222333000181' }));
     const estornos = await prisma.estorno.findMany();
     expect(estornos).toHaveLength(1); // gerência não participa (configuração)
     expect(estornos[0]).toMatchObject({ destino: 'VENDEDOR', tipo: 'CANCELAMENTO', status: 'A_COBRAR', parcelasPagas: 1 });
     expect(estornos[0]?.comissaoBase.toFixed(2)).toBe('1600.00');
     expect(estornos[0]?.valor.toFixed(2)).toBe('800.00');
     expect(estornos[0]?.dataEvento.toISOString().slice(0, 10)).toBe('2026-09-20');
+    expect(estornos[0]?.dataDebitoAdm?.toISOString().slice(0, 10)).toBe('2026-10-05'); // data do relatório
 
     // Reapurar não cobra duas vezes
     await importar(admin, administradoraId, csv([{ ...linha, situacao: 'CANCELADO', cancelamento: '20/09/2026', cliente: 'NOME CORRIGIDO' }]));
@@ -164,6 +183,7 @@ describe('fluxo financeiro completo', () => {
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
     const linha = { grupo: '30', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 3, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '25/09/2026' };
     await importar(admin, administradoraId, csv([linha]));
+    await importarRelatorio(admin, administradoraId, cancelamentoWr({ grupo: '30', cota: '1', data: '05/10/2026', venda: '10/09/2026', doc: '11222333000181' }));
     const cota = await prisma.cota.findFirstOrThrow();
     expect(cota.snapRecuperacao).toBe(true);
     const e = await prisma.estorno.findFirstOrThrow();

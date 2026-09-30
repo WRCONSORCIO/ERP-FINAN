@@ -31,6 +31,9 @@ export async function decidirConferenciaAcao(_: Estado, fd: FormData) {
   return executar('comissoes', 'editar', C.esquemaConferencia, formParaObjeto(fd), async (s, d) => {
     await C.decidirConferencia(s, d);
     await processarFila(50);
-    return { mensagem: d.decisao === 'PAGAR' ? `${d.parcela}ª parcela liberada para pagar o vendedor.` : `${d.parcela}ª parcela marcada como não paga ao vendedor.` };
+    const mensagem = d.decisao === 'PAGAR' ? `${d.parcela}ª parcela liberada para pagar o vendedor.`
+      : d.decisao === 'AGUARDAR' ? `${d.parcela}ª parcela fora da lista por enquanto: volta quando o cliente pagar mais uma parcela.`
+        : `${d.parcela}ª parcela marcada como não paga ao vendedor.`;
+    return { mensagem };
   });
 }

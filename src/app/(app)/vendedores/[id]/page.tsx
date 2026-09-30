@@ -12,7 +12,7 @@ import { BotaoVoltar } from '@/ui/botao-voltar';
 import { Dobra } from '@/ui/dobra';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import {
-  alterarAlocacaoAcao, alterarCategoriaAcao, cancelarRecuperacaoAcao, corrigirInicioAcao, desligarAcao, moverDocumentoAcao, reativarAcao, registrarRecuperacaoAcao, vincularNomeAcao,
+  alterarAlocacaoAcao, alterarCategoriaAcao, cancelarRecuperacaoAcao, corrigirInicioAcao, corrigirNomeAcao, desligarAcao, moverDocumentoAcao, reativarAcao, registrarRecuperacaoAcao, vincularNomeAcao,
 } from '../acoes';
 
 export const metadata: Metadata = { title: 'Ficha do vendedor' };
@@ -27,7 +27,11 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
   const podeEditar = pode(s.perfil, 'vendedores', 'editar');
   // Outras pessoas (com pelo menos um documento), para corrigir documento cadastrado na pessoa errada.
   const outrasPessoas = podeEditar
-    ? await prisma.pessoa.findMany({ where: { id: { not: id }, documentos: { some: {} } }, select: { id: true, nome: true }, orderBy: { nome: 'asc' } })
+    ? (await prisma.pessoa.findMany({
+        where: { id: { not: id }, documentos: { some: {} } },
+        select: { id: true, nome: true, documentos: { select: { tipoDocumento: true, documento: true }, orderBy: { criadoEm: 'asc' } } },
+        orderBy: { nome: 'asc' },
+      })).map((p) => ({ id: p.id, rotulo: `${p.nome} — ${p.documentos.map((d) => `${d.tipoDocumento} ${formatarDocumento(d.documento)}`).join(' · ')}` }))
     : [];
   const d = hoje();
   const promo = ficha.promocao?.situacao;
@@ -205,6 +209,16 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                       </FormularioAcao>
                     </div>
                   </Dobra>
+                  <Dobra chave={`nome-${doc.id}`} titulo="Nome cadastrado errado? Corrigir nome">
+                    <div className="p-3">
+                      <FormularioAcao acao={corrigirNomeAcao} rotulo="Corrigir" confirmacao={`Troca o nome do ${doc.tipoDocumento} ${formatarDocumento(doc.documento)}. As vendas e comissões continuam ligadas a este documento. Fica registrado.`}>
+                        <input type="hidden" name="vendedorId" value={doc.id} />
+                        <Campo rotulo="Nome certo (como no CPF/CNPJ)" nome={`nm-${doc.id}`}><input id={`nm-${doc.id}`} name="nome" defaultValue={doc.nome} className="campo" required /></Campo>
+                        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" name="tambemPessoa" value="true" defaultChecked={ficha.documentos.length === 1} /> Corrigir também o nome da pessoa ({ficha.pessoa.nome})</label>
+                        <Campo rotulo="Motivo" nome={`nmm-${doc.id}`}><input id={`nmm-${doc.id}`} name="motivo" className="campo" defaultValue="Nome cadastrado errado" required /></Campo>
+                      </FormularioAcao>
+                    </div>
+                  </Dobra>
                   <Dobra chave={`mover-${doc.id}`} titulo="Cadastrado na pessoa errada? Mover para outra pessoa">
                     <div className="p-3">
                       <FormularioAcao acao={moverDocumentoAcao} rotulo="Mover" confirmacao={`O ${doc.tipoDocumento} ${formatarDocumento(doc.documento)} passa para a pessoa escolhida, com categoria, equipe e vendas. As comissões são recalculadas para ela (o que já está em folha fechada vira ajuste). Fica registrado.`}>
@@ -212,7 +226,7 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                         <Campo rotulo="Pessoa certa" nome={`mv-${doc.id}`} ajuda="Ex.: o CNPJ do vendedor que foi criado como pessoa nova — escolha a pessoa que já tem o CPF dele.">
                           <select id={`mv-${doc.id}`} name="pessoaDestinoId" className="campo" required defaultValue="">
                             <option value="" disabled>Escolha…</option>
-                            {outrasPessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                            {outrasPessoas.map((p) => <option key={p.id} value={p.id}>{p.rotulo}</option>)}
                           </select>
                         </Campo>
                         <Campo rotulo="Motivo" nome={`mvm-${doc.id}`}><input id={`mvm-${doc.id}`} name="motivo" className="campo" defaultValue="Cadastrado na pessoa errada" required /></Campo>
@@ -222,7 +236,7 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                   <Dobra chave={`desl-${doc.id}`} titulo={doc.status === 'ATIVO' ? 'Desligar' : 'Reativar'}>
                     <div className="p-3">
                       {doc.status === 'ATIVO' ? (
-                        <FormularioAcao acao={desligarAcao} rotulo="Desligar" perigo confirmacao="Sai da lista de ativos. O histórico, as vendas e as comissões continuam. A pessoa só fica desligada quando todos os CPF/CNPJ dela forem desligados.">
+                        <FormularioAcao acao={desligarAcao} rotulo="Desligar" perigo confirmacao="Sai da lista de ativos. Não recebe mais nenhuma comissão que ainda não foi paga e não paga estorno. Supervisão e gerência das vendas dele continuam recebendo. A pessoa só fica desligada quando todos os CPF/CNPJ dela forem desligados.">
                           <input type="hidden" name="vendedorId" value={doc.id} />
                           <Campo rotulo="Data" nome={`dd-${doc.id}`}><input id={`dd-${doc.id}`} name="data" type="date" className="campo" defaultValue={opcoes.hojeISO} required /></Campo>
                           <Campo rotulo="Motivo" nome={`dm-${doc.id}`}><input id={`dm-${doc.id}`} name="motivo" className="campo" required /></Campo>

@@ -32,6 +32,7 @@ export const esquemaDesligar = z.object({ vendedorId: zId, data: zData, motivo: 
 export const esquemaReativar = z.object({ vendedorId: zId, motivo: zMotivo });
 export const esquemaVincularNome = z.object({ nomeImportado: zTexto(200), vendedorId: zId });
 export const esquemaMoverDocumento = z.object({ vendedorId: zId, pessoaDestinoId: zId, motivo: zMotivo });
+export const esquemaCorrigirNome = z.object({ vendedorId: zId, nome: zTexto(200), tambemPessoa: zBooleano, motivo: zMotivo });
 
 async function exigirVendedor(tx: Tx, id: string): Promise<Vendedor> {
   const v = await tx.vendedor.findUnique({ where: { id } });
@@ -292,6 +293,7 @@ export async function desligarVendedor(s: Sessao, d: z.infer<typeof esquemaDesli
     const depois = await tx.vendedor.update({ where: { id: v.id }, data: { status: 'DESLIGADO', desligadoEm: d.data } });
     await auditar(tx, { sessao: s, acao: 'DESATIVACAO', entidade: 'Vendedor', entidadeId: v.id, antes: v, depois, contexto: { motivo: d.motivo } });
     await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'documento desligado');
+    await recalcularVendasDoDocumento(tx, v.id, 'documento desligado: não recebe mais comissão nem paga estorno');
   }, { timeout: 60_000 });
 }
 
@@ -303,7 +305,14 @@ export async function reativarVendedor(s: Sessao, d: z.infer<typeof esquemaReati
     const depois = await tx.vendedor.update({ where: { id: v.id }, data: { status: 'ATIVO', desligadoEm: null } });
     await auditar(tx, { sessao: s, acao: 'REATIVACAO', entidade: 'Vendedor', entidadeId: v.id, antes: v, depois, contexto: { motivo: d.motivo } });
     await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'documento reativado');
+    await recalcularVendasDoDocumento(tx, v.id, 'documento reativado');
   }, { timeout: 60_000 });
+}
+
+/** Manda recalcular as vendas em que o documento recebe (como vendedor ou como Expert). */
+async function recalcularVendasDoDocumento(tx: Tx, vendedorId: string, motivo: string) {
+  const cotas = await tx.cota.findMany({ where: { OR: [{ snapVendedorId: vendedorId }, { snapExpertVendedorId: vendedorId }] }, select: { id: true } });
+  for (const c of cotas) await enfileirarApuracao(tx, c.id, motivo);
 }
 
 /**
@@ -336,7 +345,8 @@ export async function moverDocumento(s: Sessao, d: z.infer<typeof esquemaMoverDo
   exigir(s, 'vendedores', 'editar');
   return prisma.$transaction(async (tx) => {
     const v = await exigirVendedor(tx, d.vendedorId);
-    if (v.pessoaId === d.pessoaDestinoId) throw new ErroDeDominio('O documento já está nesta pessoa.');
+    // Já está lá (ex.: o primeiro clique já moveu e a tela não tinha atualizado): nada a fazer, sem erro.
+    if (v.pessoaId === d.pessoaDestinoId) return { pessoaDestinoId: v.pessoaId, vendas: 0, origemFicouVazia: false, jaEstava: true };
     const destino = await tx.pessoa.findUnique({ where: { id: d.pessoaDestinoId } });
     if (!destino) throw new ErroNaoEncontrado('Pessoa de destino não encontrada.');
     const origemId = v.pessoaId;
@@ -351,6 +361,29 @@ export async function moverDocumento(s: Sessao, d: z.infer<typeof esquemaMoverDo
     await reavaliarExpertDaPessoa(tx, s, origemId, 'documento movido para outra pessoa');
     await reavaliarExpertDaPessoa(tx, s, destino.id, 'documento movido de outra pessoa');
     const restantes = await tx.vendedor.count({ where: { pessoaId: origemId } });
-    return { pessoaDestinoId: destino.id, vendas: cotas.length, origemFicouVazia: restantes === 0 };
+    return { pessoaDestinoId: destino.id, vendas: cotas.length, origemFicouVazia: restantes === 0, jaEstava: false };
   }, { timeout: 60_000 });
+}
+
+/**
+ * Corrige o nome de um CPF/CNPJ cadastrado errado (ex.: o CPF da Keila cadastrado com o nome do Lucas).
+ * Pode corrigir junto o nome da pessoa (o que aparece nas listas, extrato e folha). Fica registrado.
+ * Comissões já calculadas guardam o nome da época na memória de cálculo; o titular (a pessoa) é o mesmo.
+ */
+export async function corrigirNome(s: Sessao, d: z.infer<typeof esquemaCorrigirNome>) {
+  exigir(s, 'vendedores', 'editar');
+  const nome = d.nome.replace(/\s+/g, ' ').trim().toUpperCase();
+  return prisma.$transaction(async (tx) => {
+    const v = await exigirVendedor(tx, d.vendedorId);
+    const pessoa = await tx.pessoa.findUniqueOrThrow({ where: { id: v.pessoaId } });
+    if (v.nome === nome && (!d.tambemPessoa || pessoa.nome === nome)) throw new ErroDeDominio('O nome já é este.');
+    await tx.vendedor.update({ where: { id: v.id }, data: { nome, nomeNormalizado: normalizarNome(nome) } });
+    if (d.tambemPessoa) await tx.pessoa.update({ where: { id: pessoa.id }, data: { nome, nomeNormalizado: normalizarNome(nome) } });
+    await auditar(tx, {
+      sessao: s, acao: 'ALTERACAO', entidade: 'Vendedor', entidadeId: v.id,
+      antes: { nome: v.nome, nomePessoa: pessoa.nome }, depois: { nome, nomePessoa: d.tambemPessoa ? nome : pessoa.nome },
+      contexto: { operacao: 'corrigir nome', motivo: d.motivo },
+    });
+    return { pessoaId: pessoa.id };
+  });
 }

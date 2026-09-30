@@ -235,7 +235,7 @@ async function aplicarLinhaCarteira(tx: Tx, imp: Importacao, d: LinhaCarteira, c
     const cota = await tx.cota.create({
       data: {
         ...identidade, clienteNome: d.clienteNome, clienteEmail: d.clienteEmail, clienteTelefone: d.clienteTelefone,
-        credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, situacao: d.situacao, cancelada: d.cancelada,
+        credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, parcelasAntecipadas: d.parcelasAntecipadas ?? 0, situacao: d.situacao, cancelada: d.cancelada,
         dataCancelamento, origemDataCancelamento: d.cancelada ? (dataCancArquivo ? 'base de clientes' : `data da importação que registrou o cancelamento (${formatarData(hojeData)})`) : null,
         segmentoTexto: d.segmento, flexTexto: d.flex, vendedorNomeImportado: d.vendedorNome, vendedorDocImportado: d.vendedorDocumento,
         hashConteudo: hash, vendedorId: casamento.vendedorId, ...snap, snapCongeladoEm: new Date(), snapOrigem: 'IMPORTACAO',
@@ -251,7 +251,7 @@ async function aplicarLinhaCarteira(tx: Tx, imp: Importacao, d: LinhaCarteira, c
 
   const dados: Prisma.CotaUncheckedUpdateInput = {
     clienteNome: d.clienteNome, clienteEmail: existente.anonimizadaEm ? null : d.clienteEmail, clienteTelefone: existente.anonimizadaEm ? null : d.clienteTelefone,
-    credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, situacao: d.situacao, cancelada: d.cancelada,
+    credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, parcelasAntecipadas: d.parcelasAntecipadas ?? 0, situacao: d.situacao, cancelada: d.cancelada,
     segmentoTexto: d.segmento, flexTexto: d.flex, vendedorNomeImportado: d.vendedorNome, vendedorDocImportado: d.vendedorDocumento,
     hashConteudo: hash, ultimaImportacaoId: imp.id,
   };
@@ -365,6 +365,9 @@ async function aplicarLancamento(tx: Tx, imp: Importacao, l: LinhaDeImportacao):
     }
     // O débito do cancelamento também define a competência da cobrança do estorno.
     await enfileirarApuracao(tx, cotaId, 'cancelamento no relatório de comissão da WR');
+  } else if (cotaId && tipo === 'COMISSAO_PARCELA') {
+    // A parcela apareceu no relatório da WR: é isso que libera a comissão de quem a WR paga.
+    await enfileirarApuracao(tx, cotaId, 'parcela no relatório de comissão da WR');
   }
   if (!cotaId) mensagens.push(tipo === 'CANCELAMENTO' ? 'Cancelamento sem a venda na carteira: o estorno do vendedor não pôde ser avaliado' : 'Sem vínculo com a carteira');
   if (tipo === 'OUTRO') mensagens.push(`Lançamento fora dos tipos previstos ("${d.tipo ?? ''}"): importado e exibido, sem gerar comissão`);
@@ -374,16 +377,19 @@ async function aplicarLancamento(tx: Tx, imp: Importacao, l: LinhaDeImportacao):
 async function aplicarComissaoAdm(tx: Tx, imp: Importacao, l: LinhaDeImportacao, cadastro: CadastroParaCasamento): Promise<ResultadoLinha> {
   const d = l.dados as unknown as DadosPdf;
   const hash = hashLinhaPdf(imp.tipo, imp.administradoraId, d, d.ocorrencia);
+  const documento = d.vendedorDocumento ?? null;
   if (await tx.comissaoVendedorAdm.findUnique({ where: { hash }, select: { id: true } })) return { status: 'SEM_MUDANCA' };
   const cotaId = await localizarCota(tx, imp.administradoraId, d);
-  const casamento = casarVendedor(d.vendedor, d.vendedorDocumento ?? null, cadastro);
+  const casamento = casarVendedor(d.vendedor, documento, cadastro);
   await tx.comissaoVendedorAdm.create({
     data: {
-      importacaoId: imp.id, cotaId, vendedorId: casamento.vendedorId, vendedorTexto: d.vendedor, grupo: d.grupo, cota: d.cota, contrato: d.contrato,
+      importacaoId: imp.id, cotaId, vendedorId: casamento.vendedorId, vendedorTexto: d.vendedor, vendedorDocumento: documento, grupo: d.grupo, cota: d.cota, contrato: d.contrato,
       // Sem número de parcela no relatório = 1ª parcela (a venda nova).
       parcela: d.parcela ?? 1, valor: d.valor, dataReferencia: deISO(d.data), hash, linhaOriginal: l.original,
     },
   });
+  // A parcela apareceu no relatório que a administradora paga: é isso que libera a comissão do Veterano/Expert.
+  if (cotaId) await enfileirarApuracao(tx, cotaId, 'parcela no relatório de comissão dos vendedores');
   const msgs = [!cotaId ? 'Sem vínculo com a carteira' : null, !casamento.vendedorId ? 'Vendedor não casado com o cadastro' : null].filter(Boolean);
   return { status: 'NOVA', ...(msgs.length > 0 ? { mensagem: msgs.join(' · ') } : {}) };
 }

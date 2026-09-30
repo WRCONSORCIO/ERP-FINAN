@@ -9,7 +9,7 @@ import { exigirPagina } from '@/servidor/sessao';
 import { param, type Params } from '@/servidor/consultas/comum';
 import { aPagar, competenciaPadrao, conferenciasPendentes, detalheBeneficiario, folhas, previaFechamento } from '@/servidor/consultas/a-pagar';
 import { DecidirConferencia } from '../clientes/conferencia';
-import { Aviso, Campo, Cartao, Dinheiro, EstadoVazio, Etiqueta, LinkBotao, Monograma, Pagina, Secao, classeBotao } from '@/ui/base';
+import { Aviso, Campo, Cartao, DataCurta, Dinheiro, EstadoVazio, Etiqueta, LinkBotao, Monograma, Pagina, Secao, classeBotao } from '@/ui/base';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import { MemoriaDeCalculo } from '@/ui/memoria';
 import { ROTULO_COMISSAO, TOM_COMISSAO } from '@/ui/rotulos';
@@ -24,8 +24,9 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
   const pessoaSel = param(sp, 'pessoa');
   const competencia = /^\d{4}-\d{2}$/.test(param(sp, 'competencia')) ? param(sp, 'competencia') : competenciaPadrao();
   const podeEditar = pode(s.perfil, 'comissoes', 'editar');
+  const relatoriosAte = /^\d{4}-\d{2}-\d{2}$/.test(param(sp, 'relatoriosAte')) ? param(sp, 'relatoriosAte') : `${competencia}-10`;
   const [d, lista, detalhe, previa, conferencias] = await Promise.all([
-    aPagar(s), folhas(s), pessoaSel ? detalheBeneficiario(s, pessoaSel) : Promise.resolve(null), podeEditar ? previaFechamento(s, competencia) : Promise.resolve(null),
+    aPagar(s), folhas(s), pessoaSel ? detalheBeneficiario(s, pessoaSel) : Promise.resolve(null), podeEditar ? previaFechamento(s, competencia, new Date(`${relatoriosAte}T00:00:00Z`)) : Promise.resolve(null),
     conferenciasPendentes(s),
   ]);
   const nomeSel = d.linhas.find((l) => l.pessoaId === pessoaSel)?.nome;
@@ -33,12 +34,12 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
   return (
     <Pagina
       titulo="A Pagar"
-      descricao="Quanto a WR deve a cada pessoa, e por quê (somando CPF e CNPJ da mesma pessoa). A comissão só é liberada depois que o cliente paga a parcela."
+      descricao="Quanto a WR deve a cada pessoa, e por quê (somando CPF e CNPJ da mesma pessoa). A comissão só é liberada quando a parcela aparece no relatório da administradora (a WR recebe e repassa no dia 20)."
       acoes={<LinkBotao href="/exportar/a-pagar" icone="download" download>Exportar</LinkBotao>}
     >
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Cartao destaque rotulo="Liberado a pagar" valor={<Dinheiro valor={d.totais.liberado} />} detalhe="O cliente já pagou; ainda não entrou em folha" />
-        <Cartao rotulo="Previsto total" valor={<Dinheiro valor={d.totais.previsto} />} tom="azul" detalhe="Liberado + parcelas que o cliente ainda vai pagar" />
+        <Cartao destaque rotulo="Liberado a pagar" valor={<Dinheiro valor={d.totais.liberado} />} detalhe="Já veio no relatório da administradora; ainda não entrou em folha" />
+        <Cartao rotulo="Previsto total" valor={<Dinheiro valor={d.totais.previsto} />} tom="azul" detalhe="Liberado + parcelas que ainda não vieram no relatório" />
         <Cartao rotulo="Já em folha" valor={<Dinheiro valor={d.totais.emFolha} />} tom="neutro" detalhe="Folhas fechadas ainda não pagas" />
         <Cartao rotulo="Estorno a cobrar" valor={<Dinheiro valor={d.totais.estornoACobrar} />} tom="ambar" detalhe="Informação: não é descontado automaticamente da folha" href="/estornos" />
       </div>
@@ -60,9 +61,9 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
                     <td className="numero">{c.cota.grupo}/{c.cota.cota}</td>
                     <td>{c.cota.snapVendedor?.nome ?? '—'}{c.cota.snapCategoria ? <span className="block text-[11px] text-wr-texto-3">{c.cota.snapCategoria.nome}</span> : null}</td>
                     <td className="direita numero">{c.parcela}ª</td>
-                    <td className="direita numero">{c.cota.parcelasPagas}</td>
+                    <td className="direita numero">{c.cota.parcelasPagas}{c.cota.parcelasAntecipadas ? <span className="block text-[11px] text-wr-texto-3">{c.cota.parcelasAntecipadas} antecipada(s)</span> : null}</td>
                     <td className="direita">{c.valor ? <Dinheiro valor={c.valor} /> : '—'}</td>
-                    {podeEditar ? <td className="min-w-[440px]"><DecidirConferencia cotaId={c.cota.id} parcela={c.parcela} /></td> : null}
+                    {podeEditar ? <td className="min-w-[640px]"><DecidirConferencia cotaId={c.cota.id} parcela={c.parcela} /></td> : null}
                   </tr>
                 ))}
               </tbody>
@@ -96,7 +97,7 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
       </Secao>
 
       {detalhe ? (
-        <Secao id="detalhe" titulo={`Detalhe · ${nomeSel ?? ''}`} descricao="Prevista = cliente ainda não pagou a parcela. Liberada = pode entrar na próxima folha." acoes={<LinkBotao href="/a-pagar" variante="fantasma" pequeno>Fechar detalhe</LinkBotao>} semPadding>
+        <Secao id="detalhe" titulo={`Detalhe · ${nomeSel ?? ''}`} descricao="Prevista = ainda não veio no relatório da administradora. Liberada = veio no relatório e pode entrar na próxima folha." acoes={<LinkBotao href="/a-pagar" variante="fantasma" pequeno>Fechar detalhe</LinkBotao>} semPadding>
           {detalhe.length === 0 ? <EstadoVazio titulo="Nada em aberto para esta pessoa" /> : (
             <div className="tabela-quadro">
               <table className="tabela">
@@ -122,18 +123,22 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
       ) : null}
 
       {podeEditar ? (
-        <Secao titulo="Fechar folha" descricao="Entra só a comissão liberada (o cliente já pagou a parcela). Depois de fechada, a folha não muda mais: qualquer correção entra como ajuste na folha seguinte. Estorno não é descontado automaticamente.">
+        <Secao titulo="Fechar folha" descricao="A folha paga no dia 20 leva a comissão que a WR recebeu nos relatórios da administradora até a data de corte (padrão: dia 10 do mês) e que ainda não foi paga. Ex.: folha de 20/10 = relatórios de 10/09, 20/09 e 10/10. Depois de fechada, a folha não muda mais: correção entra como ajuste na folha seguinte. Estorno não é descontado automaticamente.">
           <form method="get" className="mb-3 flex flex-wrap items-end gap-2">
-            <Campo rotulo="Mês da folha" nome="competencia-previa">
+            <Campo rotulo="Mês da folha (pago no dia 20)" nome="competencia-previa">
               <input id="competencia-previa" type="month" name="competencia" defaultValue={competencia} className="campo w-44" />
+            </Campo>
+            <Campo rotulo="Relatórios até" nome="relatorios-ate">
+              <input id="relatorios-ate" type="date" name="relatoriosAte" defaultValue={relatoriosAte} className="campo w-44" />
             </Campo>
             <button type="submit" className={classeBotao('secundario')}>Ver prévia</button>
           </form>
           {previa ? (
-            <p className="mb-3 text-[13px]">Entrariam na folha de <strong>{rotuloMesLongo(previa.competencia)}</strong>: <span className="numero font-semibold">{previa.quantidade}</span> comissão(ões) liberada(s) até o fim do mês, total <Dinheiro valor={previa.total} forte />.</p>
+            <p className="mb-3 text-[13px]">Entrariam na folha de <strong>{rotuloMesLongo(previa.competencia)}</strong>: <span className="numero font-semibold">{previa.quantidade}</span> comissão(ões) dos relatórios até <strong><DataCurta valor={previa.corte} /></strong>, total <Dinheiro valor={previa.total} forte />.</p>
           ) : null}
           <FormularioAcao acao={fecharFolhaAcao} rotulo={`Fechar folha de ${rotuloMesLongo(competencia)}`} perigo confirmacao="Fechar a folha não tem volta: os valores ficam fixos. Correções futuras entram como ajuste na próxima folha.">
             <input type="hidden" name="competencia" value={competencia} />
+            <input type="hidden" name="relatoriosAte" value={relatoriosAte} />
           </FormularioAcao>
           <p className="mt-2 text-[12px] text-wr-texto-3">Mês anterior: <Link href={`/a-pagar?competencia=${deslocarCompetencia(competencia, -1)}`}>{rotuloMesLongo(deslocarCompetencia(competencia, -1))}</Link></p>
         </Secao>

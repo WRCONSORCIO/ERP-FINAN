@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { abrirVigenciaConfigEstorno, abrirVigenciaRegraEstorno, abrirVigenciaTabela, definirEscopoBase, simularTabela } from '@/servidor/servicos/regras';
 import { alterarCategoria, corrigirInicioCategoria } from '@/servidor/servicos/vendedores';
 import { corrigirRegraEstorno, excluirVigencia } from '@/servidor/servicos/vigencias';
-import { comissoesDa, csv, D, estrutura, importar, preparar, vendedor } from './ajuda';
+import { comissoesDa, csv, D, estrutura, importar, importarCanceladas, preparar, vendedor } from './ajuda';
 
 describe('vigência: a regra é resolvida pela data do fato', () => {
   it('venda anterior usa a regra antiga; venda a partir da nova vigência usa a nova; passado não muda', async () => {
@@ -48,10 +48,10 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
     await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: null, titularVendedorId: null, percentual: '30', vigenteDe: D('2026-09-15') });
-    await importar(admin, administradoraId, csv([
+    await importarCanceladas(admin, administradoraId, [
       { grupo: '2', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '14/09/2026' },
       { grupo: '2', cota: '2', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
-    ]));
+    ]);
     const antigo = await prisma.estorno.findFirstOrThrow({ where: { cota: { cota: '1' } } });
     const atual = await prisma.estorno.findFirstOrThrow({ where: { cota: { cota: '2' } } });
     expect(antigo.percentual.toFixed(2)).toBe('50.00');
@@ -72,12 +72,12 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: 'EXPERT', titularVendedorId: null, percentual: '70', vigenteDe: D('2026-09-10') });
     await expect(abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: 'NAO_EXISTE', titularVendedorId: null, percentual: '10', vigenteDe: D('2026-09-10') })).rejects.toThrow(/desconhecido/);
     await expect(abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: 'EXPERT', titularVendedorId: vet.id, percentual: '10', vigenteDe: D('2026-09-10') })).rejects.toThrow(/não os dois/);
-    await importar(admin, administradoraId, csv([
+    await importarCanceladas(admin, administradoraId, [
       { grupo: '4', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
       { grupo: '4', cota: '2', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11444777000161', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
       // Cancelada antes da vigência do percentual do Expert: usa o padrão
       { grupo: '4', cota: '3', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11444777000161', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '05/09/2026' },
-    ]));
+    ]);
     const estornoDa = (cota: string) => prisma.estorno.findFirstOrThrow({ where: { cota: { cota }, destino: 'VENDEDOR', status: { not: 'INVALIDADO' } } });
     const [e1, e2, e3] = [await estornoDa('1'), await estornoDa('2'), await estornoDa('3')];
     expect(e1.percentual.toFixed(2)).toBe('50.00');
@@ -88,9 +88,9 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
 
     // Exceção individual vence o percentual da categoria (e não reescreve o estorno já apurado)
     await abrirVigenciaRegraEstorno(admin, { tipo: 'CANCELAMENTO', participante: null, titularVendedorId: vet.id, percentual: '20', vigenteDe: D('2026-09-21') });
-    await importar(admin, administradoraId, csv([
+    await importarCanceladas(admin, administradoraId, [
       { grupo: '4', cota: '4', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '22/09/2026' },
-    ]));
+    ]);
     expect((await estornoDa('4')).percentual.toFixed(2)).toBe('20.00');
     expect((await estornoDa('1')).percentual.toFixed(2)).toBe('50.00');
     // Sobreposição do mesmo tipo e categoria é barrada pelo banco
@@ -114,9 +114,9 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
 
     const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
-    await importar(admin, administradoraId, csv([
+    await importarCanceladas(admin, administradoraId, [
       { grupo: '5', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
-    ]));
+    ]);
     const e = await prisma.estorno.findFirstOrThrow({ where: { destino: 'VENDEDOR' } });
     expect(e.percentual.toFixed(2)).toBe('40.00');
     // Agora usada: não corrige nem exclui
@@ -144,9 +144,9 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
 
     const periodo = await prisma.periodoRecuperacao.count();
     expect(periodo).toBe(0);
-    await importar(admin, administradoraId, csv([
+    await importarCanceladas(admin, administradoraId, [
       { grupo: '6', cota: '1', credito: '100.000,00', venda: '01/09/2026', pagas: 1, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
-    ]));
+    ]);
     expect((await prisma.estorno.findFirstOrThrow({ where: { destino: 'VENDEDOR' } })).percentual.toFixed(2)).toBe('50.00');
   });
 

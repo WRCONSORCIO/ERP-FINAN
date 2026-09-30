@@ -22,7 +22,7 @@ function TabelaPessoas({ linhas }: { linhas: Linha[] }) {
       <table className="tabela">
         <thead>
           <tr>
-            <th>Pessoa</th><th>Categoria</th><th className="direita">Cotas</th><th className="direita">Produção acumulada</th><th>Próxima categoria</th><th className="direita">Falta</th>
+            <th>Pessoa</th><th>Categoria atual</th><th className="direita">Cotas</th><th className="direita">Produção acumulada</th><th>Próxima categoria</th><th className="direita">Falta</th>
           </tr>
         </thead>
         <tbody>
@@ -38,7 +38,8 @@ function TabelaPessoas({ linhas }: { linhas: Linha[] }) {
                 </td>
                 <td>
                   <div className="flex flex-wrap items-center gap-1">
-                    {[...new Set(l.documentos.filter((d) => d.status !== 'DESLIGADO').map((d) => d.categoria?.nome ?? ''))].map((c) => (c ? <Etiqueta key={c} tom="verde">{c}</Etiqueta> : <Etiqueta key="sem" tom="ambar">sem categoria</Etiqueta>))}
+                    {/* Categoria atual da pessoa: a maior entre os CPF/CNPJ ativos (mesma regra da ficha). */}
+                    {l.promocao?.categoriaAtual ? <Etiqueta tom="verde">{l.promocao.categoriaAtual.nome}</Etiqueta> : <Etiqueta tom="ambar">sem categoria</Etiqueta>}
                     {l.documentos.some((d) => d.emRecuperacao) ? <Etiqueta tom="ambar">recuperação</Etiqueta> : null}
                     {l.documentos.length > 0 && l.documentos.every((d) => d.status === 'DESLIGADO') ? <Etiqueta tom="vermelho">desligado</Etiqueta> : null}
                   </div>

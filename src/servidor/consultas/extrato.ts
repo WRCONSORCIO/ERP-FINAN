@@ -13,7 +13,7 @@ export async function extratoDaPessoa(s: Sessao, pessoaId: string, p: Periodo) {
     prisma.comissaoApurada.findMany({
       where: { AND: [escopoComissoes(s), { titularPessoaId: pessoaId, status: { in: ['LIBERADA', 'EM_FOLHA', 'PAGA'] }, liberadaEm: { gte: p.de, lt: fim } }] },
       include: { cota: { select: { id: true, clienteNome: true, grupo: true, cota: true, credito: true, dataVenda: true, snapModalidadeFlex: { select: { nome: true, percentual: true } } } }, titularVendedor: { select: { tipoDocumento: true, documento: true } } },
-      orderBy: [{ cota: { dataVenda: 'asc' } }, { parcela: 'asc' }],
+      orderBy: [{ cota: { dataVenda: 'asc' } }, { cotaId: 'asc' }, { parcela: 'asc' }, { destino: 'asc' }],
     }),
     prisma.estorno.findMany({
       where: { AND: [escopoEstornos(s), { titularPessoaId: pessoaId, status: { not: 'INVALIDADO' }, dataEvento: { gte: p.de, lt: fim } }] },

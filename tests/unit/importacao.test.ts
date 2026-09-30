@@ -48,6 +48,25 @@ describe('base de clientes (CSV Latin-1, ;)', () => {
   });
 });
 
+describe('base de clientes no layout da Servopa (DT_VENDA, NR_GRUPO, TX_FLEX...)', () => {
+  const cab = 'DT_VENDA;NR_GRUPO;NR_COTA;NR_CONTRATO;DS_SITUACAO;VL_CREDITO;DS_SEGMENTO;QT_PARCELAS_PAGAS;NM_CPFCNPJ_CONSORCIADO;NM_CONSORCIADO;ST_FLEX;TX_FLEX;NM_CPFCNPJ_VENDEDOR;NM_VENDEDOR;DT_CANCELAMENTO';
+  const texto = [
+    cab,
+    '28/08/2026;1578;0720-7;80084I10  ;ATIVO     ;R$100.000,00      ;IMOVEL    ;001;529.982.247-25    ;CLIENTE UM   ;S;50   ;11.222.333/0001-81;11.222.333 FULANO ;          ',
+    '01/09/2026;1577;0848-9;84973I10  ;ATIVO     ;R$150.000,00      ;MOVEL     ;002;111.444.777-35    ;CLIENTE DOIS ;N;     ;529.982.247-25;BELTRANO ;          ',
+    '31/08/2026;1575;1312-2;84000I10  ;ESTORNADO ;R$80.000,00       ;IMOVEL    ;000;529.982.247-25    ;CLIENTE TRES ;S;10   ;529.982.247-25;BELTRANO ;23/09/2026',
+  ].join('\r\n');
+  it('lê todas as colunas, flex só com o número e ESTORNADO como cancelada', () => {
+    const r = lerCarteira(texto, LAYOUT_CARTEIRA_INICIAL);
+    expect(r.faltando).toEqual([]);
+    expect(r.erros).toEqual([]);
+    const [a, b, c] = r.linhas.map((l) => l.dados);
+    expect(a).toMatchObject({ grupo: '1578', cota: '720', contrato: '80084I10', credito: '100000', parcelasPagas: 1, flex: 'FLEX 50', segmento: 'IMOVEL', vendedorDocumento: '11222333000181', cancelada: false });
+    expect(b).toMatchObject({ flex: null, segmento: 'MOVEL', parcelasPagas: 2 });
+    expect(c).toMatchObject({ cancelada: true, dataCancelamento: '2026-09-23', flex: 'FLEX 10' });
+  });
+});
+
 describe('relatórios PDF (layout configurável)', () => {
   const layouts = { FECHAMENTO_CV056E: LAYOUT_CV056E_INICIAL, COMISSAO_VENDEDOR_CV069E: LAYOUT_CV069E_INICIAL, BONUS_GC070A: LAYOUT_GC070A_INICIAL };
   it('reconhece o tipo pelo conteúdo, não pelo nome', () => {

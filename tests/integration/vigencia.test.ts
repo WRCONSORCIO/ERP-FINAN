@@ -205,7 +205,7 @@ describe('vigência: a regra é resolvida pela data do fato', () => {
     const v = await vendedor(admin, { nome: 'Carla ME', tipo: 'CNPJ', doc: '11222333000181', categoriaId: cat.VETERANO, equipeId: est.equipeId });
     await importar(admin, administradoraId, csv([{ grupo: '3', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: '11222333000181' }]));
     // CPF não pode ser Veterano; CNPJ não pode ser Iniciante (regra da WR)
-    await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.INICIANTE, vigenteDe: D('2026-10-01'), motivo: 'teste', promocao: false })).rejects.toThrow(/não é aceita/);
+    await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.INICIANTE, vigenteDe: D('2026-10-01'), motivo: 'teste', promocao: false })).rejects.toThrow(/configurada para aceitar só CPF. Para cadastrar com CNPJ/);
     // Promover a partir de data com venda apurada: recusado
     await expect(alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.EXPERT, vigenteDe: D('2026-09-01'), motivo: 'teste', promocao: true })).rejects.toThrow(/já foi calculada/);
     await alterarCategoria(admin, { vendedorId: v.id, categoriaId: cat.EXPERT, vigenteDe: D('2026-10-01'), motivo: 'meta atingida', promocao: true });

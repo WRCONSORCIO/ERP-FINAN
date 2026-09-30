@@ -31,6 +31,7 @@ export const esquemaCancelarRecuperacao = z.object({ id: zId, motivo: zMotivo })
 export const esquemaDesligar = z.object({ vendedorId: zId, data: zData, motivo: zMotivo });
 export const esquemaReativar = z.object({ vendedorId: zId, motivo: zMotivo });
 export const esquemaVincularNome = z.object({ nomeImportado: zTexto(200), vendedorId: zId });
+export const esquemaMoverDocumento = z.object({ vendedorId: zId, pessoaDestinoId: zId, motivo: zMotivo });
 
 async function exigirVendedor(tx: Tx, id: string): Promise<Vendedor> {
   const v = await tx.vendedor.findUnique({ where: { id } });
@@ -322,5 +323,34 @@ export async function vincularNomeImportado(s: Sessao, d: z.infer<typeof esquema
     await auditar(tx, { sessao: s, acao: 'CRIACAO', entidade: 'VendedorAlias', entidadeId: alias.id, depois: { vendedor: v.nome, nomeImportado: d.nomeImportado } });
     const vinculadas = await vincularVendasPendentes(tx, s, v);
     return { vinculadas };
+  }, { timeout: 60_000 });
+}
+
+/**
+ * Corrige um CPF/CNPJ cadastrado na pessoa errada (ex.: CNPJ criado como pessoa nova em vez de junto do CPF
+ * do vendedor): o documento passa para a outra pessoa, com todo o histórico (categoria, equipe, vendas).
+ * As vendas desse documento são recalculadas para o novo titular (o que já estiver em folha fechada vira
+ * ajuste) e a regra do Expert é reavaliada nas duas pessoas. Fica registrado.
+ */
+export async function moverDocumento(s: Sessao, d: z.infer<typeof esquemaMoverDocumento>) {
+  exigir(s, 'vendedores', 'editar');
+  return prisma.$transaction(async (tx) => {
+    const v = await exigirVendedor(tx, d.vendedorId);
+    if (v.pessoaId === d.pessoaDestinoId) throw new ErroDeDominio('O documento já está nesta pessoa.');
+    const destino = await tx.pessoa.findUnique({ where: { id: d.pessoaDestinoId } });
+    if (!destino) throw new ErroNaoEncontrado('Pessoa de destino não encontrada.');
+    const origemId = v.pessoaId;
+    await tx.vendedor.update({ where: { id: v.id }, data: { pessoaId: destino.id } });
+    await tx.pessoaVinculo.create({ data: { pessoaId: destino.id, vendedorId: v.id, motivo: `documento movido de outra pessoa: ${d.motivo}`, criadoPorId: s.usuarioId } });
+    const cotas = await tx.cota.findMany({ where: { snapVendedorId: v.id }, select: { id: true } });
+    for (const c of cotas) await enfileirarApuracao(tx, c.id, 'documento movido para outra pessoa');
+    await auditar(tx, {
+      sessao: s, acao: 'ALTERACAO', entidade: 'Vendedor', entidadeId: v.id,
+      antes: { pessoaId: origemId }, depois: { pessoaId: destino.id }, contexto: { operacao: 'mover documento para outra pessoa', motivo: d.motivo, vendas: cotas.length },
+    });
+    await reavaliarExpertDaPessoa(tx, s, origemId, 'documento movido para outra pessoa');
+    await reavaliarExpertDaPessoa(tx, s, destino.id, 'documento movido de outra pessoa');
+    const restantes = await tx.vendedor.count({ where: { pessoaId: origemId } });
+    return { pessoaDestinoId: destino.id, vendas: cotas.length, origemFicouVazia: restantes === 0 };
   }, { timeout: 60_000 });
 }

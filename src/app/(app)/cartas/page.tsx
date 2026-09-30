@@ -53,8 +53,8 @@ export default async function Cartas({ searchParams }: { searchParams: Promise<P
         <Campo rotulo="Buscar por código, cliente, documento ou administradora" nome="busca" className="w-full max-w-md">
           <input id="busca" name="busca" defaultValue={f.busca} className="campo" placeholder="Código, cliente, CPF/CNPJ, administradora" />
         </Campo>
-        <Campo rotulo="Administradora" nome="administradoraId">
-          <select id="administradoraId" name="administradoraId" defaultValue={f.administradoraId} className="campo">
+        <Campo rotulo="Administradora" nome="filtroAdministradoraId">
+          <select id="filtroAdministradoraId" name="administradoraId" defaultValue={f.administradoraId} className="campo">
             <option value="">Todas</option>
             {opcoes.administradoras.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
           </select>

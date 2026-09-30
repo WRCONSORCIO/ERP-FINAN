@@ -3,6 +3,9 @@
 import { executar, formParaObjeto, type Resultado } from '@/servidor/acao';
 import { processarFila } from '@/servidor/fila';
 import * as V from '@/servidor/servicos/vendedores';
+import { z } from 'zod';
+import { ErroDeDominio } from '@/lib/erros';
+import { esquemaExecutarLote, executarCadastroLote, previaCadastroLote, type PreviaLote, type ResultadoItemLote } from '@/servidor/servicos/cadastro-lote';
 
 type Estado = Resultado<unknown> | null;
 
@@ -86,4 +89,20 @@ export async function corrigirNomeAcao(_: Estado, fd: FormData) {
     await V.corrigirNome(s, d);
     return { mensagem: d.tambemPessoa ? 'Nome do documento e da pessoa corrigidos.' : 'Nome do documento corrigido.' };
   });
+}
+
+/** Cadastro em lote: lê a planilha e devolve a prévia (não grava nada). */
+export async function previaCadastroLoteAcao(fd: FormData): Promise<Resultado<PreviaLote>> {
+  const arquivo = fd.get('arquivo');
+  return executar('vendedores', 'editar', z.object({}), {}, async (s) => {
+    if (!(arquivo instanceof File) || arquivo.size === 0) throw new ErroDeDominio('Escolha a planilha.');
+    if (arquivo.size > 5 * 1024 * 1024) throw new ErroDeDominio('Planilha grande demais (até 5 MB).');
+    const dados = await previaCadastroLote(s, { bytes: new Uint8Array(await arquivo.arrayBuffer()), nome: arquivo.name });
+    return { mensagem: 'ok', dados };
+  });
+}
+
+/** Cadastro em lote: grava um pedaço da prévia confirmada. */
+export async function executarCadastroLoteAcao(itens: unknown): Promise<Resultado<ResultadoItemLote[]>> {
+  return executar('vendedores', 'editar', esquemaExecutarLote, { itens }, async (s, d) => ({ mensagem: 'ok', dados: await executarCadastroLote(s, d) }));
 }

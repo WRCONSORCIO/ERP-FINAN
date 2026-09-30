@@ -9,9 +9,12 @@ import { Aviso, BarraProgresso, Campo, Dinheiro, Etiqueta, EstadoVazio, LinkBota
 import { Dobra } from '@/ui/dobra';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import { cadastrarVendedorAcao } from './acoes';
+import { CadastroLote } from './cadastro-lote';
 
 export const metadata: Metadata = { title: 'Vendedores' };
 export const dynamic = 'force-dynamic';
+// O cadastro em lote grava de poucos em poucos, mas cada cadastro vincula as vendas que o aguardavam.
+export const maxDuration = 60;
 
 type Linha = Awaited<ReturnType<typeof listarVendedores>>['ativos'][number];
 
@@ -114,6 +117,12 @@ export default async function Vendedores({ searchParams }: { searchParams: Promi
         <button className={classeBotao('primario')} type="submit">Buscar</button>
         {busca ? <LinkBotao href="/vendedores" variante="fantasma">Limpar</LinkBotao> : null}
       </form>
+
+      {podeEditar ? (
+        <Dobra chave="vendedores-cadastrar-lote" titulo="Cadastrar vários de uma vez (planilha)">
+          <CadastroLote />
+        </Dobra>
+      ) : null}
 
       {podeEditar ? (
         <Dobra chave="vendedores-cadastrar" titulo="Cadastrar vendedor (ou mais um CPF/CNPJ para a mesma pessoa)">

@@ -1,6 +1,7 @@
 'use server';
 
 import { executar, formParaObjeto, type Resultado } from '@/servidor/acao';
+import { processarFila } from '@/servidor/fila';
 import * as V from '@/servidor/servicos/vendedores';
 
 type Estado = Resultado<unknown> | null;
@@ -65,5 +66,13 @@ export async function vincularNomeAcao(_: Estado, fd: FormData) {
   return executar('vendedores', 'editar', V.esquemaVincularNome, formParaObjeto(fd), async (s, d) => {
     const r = await V.vincularNomeImportado(s, d);
     return { mensagem: `Nome vinculado ao documento. ${r.vinculadas} venda(s) vinculada(s) e enviadas para apuração.` };
+  });
+}
+
+export async function moverDocumentoAcao(_: Estado, fd: FormData) {
+  return executar('vendedores', 'editar', V.esquemaMoverDocumento, formParaObjeto(fd), async (s, d) => {
+    const r = await V.moverDocumento(s, d);
+    await processarFila(100);
+    return { mensagem: `Documento movido para a outra pessoa, com o histórico. ${r.vendas} venda(s) recalculada(s).${r.origemFicouVazia ? ' Esta ficha ficou sem documentos e sai da lista de vendedores.' : ''} Volte à lista de vendedores para abrir a pessoa de destino.` };
   });
 }

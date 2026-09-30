@@ -58,6 +58,32 @@ describe('2ª parcela do Iniciante: a WR não recebe, então pagar o vendedor ex
     await expect(decidirConferencia(admin, { cotaId: c1.id, parcela: 2, decisao: 'NAO_PAGAR', motivo: 'tarde demais' })).rejects.toThrow(/folha fechada/);
   });
 
+  it('venda cancelada não passa pela conferência: a 2ª parcela sai como não paga (salvo decisão manual de pagar)', async () => {
+    const { admin, administradoraId, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    await vendedor(admin, { nome: 'Camila', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
+    // Estava na conferência (cliente pagou a 2ª) e depois a venda cancelou.
+    await importar(admin, administradoraId, csv([linha('1', 2)]));
+    expect(await conferenciasPendentes(admin)).toHaveLength(1);
+    await importar(admin, administradoraId, csv([{ ...linha('1', 2), situacao: 'CANCELADO', cancelamento: '05/03/2026' }]));
+    expect(await conferenciasPendentes(admin)).toHaveLength(0);
+    const seg = await doVendedor('1', 2);
+    expect(seg.map((c) => c.status)).toEqual(['CANCELADA']);
+    expect(seg[0]?.motivoCancelamento).toMatch(/Venda cancelada/);
+    expect((await doVendedor('1', 1)).map((c) => c.status)).toEqual(['LIBERADA']); // a 1ª, paga antes do cancelamento, continua
+
+    // Já chega cancelada com "2 parcelas pagas" na base: nem entra na lista.
+    await importar(admin, administradoraId, csv([{ ...linha('2', 2), situacao: 'CANCELADO', cancelamento: '05/03/2026' }]));
+    expect(await conferenciasPendentes(admin)).toHaveLength(0);
+    expect(await prisma.comissaoApurada.count({ where: { cota: { cota: '2' }, destino: 'VENDEDOR', parcela: 2, status: { not: 'CANCELADA' } } })).toBe(0);
+
+    // Exceção: alguém decide pagar mesmo assim.
+    const c2 = await prisma.cota.findFirstOrThrow({ where: { cota: '2' } });
+    await decidirConferencia(admin, { cotaId: c2.id, parcela: 2, decisao: 'PAGAR', motivo: 'exceção combinada' });
+    await apurarTudo();
+    expect((await doVendedor('2', 2)).filter((c) => c.status !== 'CANCELADA').map((c) => c.status)).toEqual(['LIBERADA']);
+  });
+
   it('Veterano e categorias sem a regra não são afetados', async () => {
     const { admin, administradoraId, cat } = await preparar();
     const est = await estrutura(admin, 'A');

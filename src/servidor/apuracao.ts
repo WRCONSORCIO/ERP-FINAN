@@ -189,16 +189,21 @@ interface Conferencia {
   aguardando: Set<string>;
   /** Chaves decididas como "não pagar". */
   naoPagar: Set<string>;
+  /** Chaves que não serão pagas porque a venda foi cancelada (sem decisão manual de pagar). */
+  canceladaNaoPaga: Set<string>;
 }
 
 async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaComissao[]): Promise<Conferencia> {
-  const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set() };
+  const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set(), canceladaNaoPaga: new Set() };
   if (cota.snapParcelasConferencia.length === 0) return r;
   const decisoes = new Map((await tx.conferenciaParcela.findMany({ where: { cotaId: cota.id } })).map((c) => [c.parcela, c.decisao]));
   r.desejadas = desejadas.filter((l) => {
     if (l.destino !== 'VENDEDOR' || !cota.snapParcelasConferencia.includes(l.parcela)) return true;
     const decisao = decisoes.get(l.parcela);
     if (decisao === 'NAO_PAGAR') { r.naoPagar.add(`VENDEDOR|${l.parcela}`); return false; }
+    // Regra da WR: venda cancelada não paga mais nada ao vendedor. A parcela que exigiria conferência (a WR não a
+    // recebe) não vai para a lista: sai como não paga, salvo decisão manual explícita de pagar.
+    if (cota.cancelada && decisao !== 'PAGAR') { r.canceladaNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
     if (decisao !== 'PAGAR') r.aguardando.add(`VENDEDOR|${l.parcela}`);
     return true;
   });
@@ -255,7 +260,9 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
         continue;
       }
       const motivo = d ? 'Reapuração: snapshot ou regra mudou — substituída por nova linha'
-        : conferencia.naoPagar.has(chave) ? 'Conferência manual: decidido não pagar esta parcela ao vendedor' : 'Reapuração: comissão não se aplica mais a esta venda';
+        : conferencia.naoPagar.has(chave) ? 'Conferência manual: decidido não pagar esta parcela ao vendedor'
+          : conferencia.canceladaNaoPaga.has(chave) ? 'Venda cancelada: a parcela que a WR não recebe da administradora não é paga ao vendedor'
+            : 'Reapuração: comissão não se aplica mais a esta venda';
       for (const c of abertas) await cancelar(c, motivo);
       if (d && (d.liberada || !cota.cancelada)) {
         const segura = segurar(d.destino, d.parcela);

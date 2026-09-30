@@ -73,6 +73,10 @@ export async function moverDocumentoAcao(_: Estado, fd: FormData) {
   return executar('vendedores', 'editar', V.esquemaMoverDocumento, formParaObjeto(fd), async (s, d) => {
     const r = await V.moverDocumento(s, d);
     await processarFila(100);
-    return { mensagem: `Documento movido para a outra pessoa, com o histórico. ${r.vendas} venda(s) recalculada(s).${r.origemFicouVazia ? ' Esta ficha ficou sem documentos e sai da lista de vendedores.' : ''} Volte à lista de vendedores para abrir a pessoa de destino.` };
+    if (r.jaEstava) return { mensagem: 'Este documento já está na pessoa escolhida (a transferência já tinha sido feita). Abrindo a ficha dela…', dados: { irPara: `/vendedores/${r.pessoaDestinoId}` } };
+    return {
+      mensagem: `Documento movido, com o histórico. ${r.vendas} venda(s) recalculada(s). Abrindo a ficha da pessoa certa…`,
+      dados: { irPara: `/vendedores/${r.pessoaDestinoId}` },
+    };
   });
 }

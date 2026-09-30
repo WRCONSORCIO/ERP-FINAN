@@ -23,7 +23,9 @@ describe('documento cadastrado na pessoa errada', () => {
     expect(await prisma.vendedor.count({ where: { pessoaId: cpf.pessoaId } })).toBe(2);
     expect(await prisma.pessoaVinculo.count({ where: { vendedorId: cnpj.id, pessoaId: cpf.pessoaId } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { entidade: 'Vendedor', entidadeId: cnpj.id, acao: 'ALTERACAO' } })).toBe(1);
-    await expect(moverDocumento(admin, { vendedorId: cnpj.id, pessoaDestinoId: cpf.pessoaId, motivo: 'de novo' })).rejects.toThrow(/já está nesta pessoa/);
+    // Segundo clique (tela desatualizada): não dá erro nem registra de novo.
+    expect(await moverDocumento(admin, { vendedorId: cnpj.id, pessoaDestinoId: cpf.pessoaId, motivo: 'de novo' })).toMatchObject({ jaEstava: true, vendas: 0 });
+    expect(await prisma.auditLog.count({ where: { entidade: 'Vendedor', entidadeId: cnpj.id, acao: 'ALTERACAO' } })).toBe(1);
   });
 
   it('CNPJ Expert em pessoa separada: ao mover para a pessoa do Veterano, as vendas passam a gerar os 0,3% do Expert', async () => {

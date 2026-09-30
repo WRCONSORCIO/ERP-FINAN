@@ -27,7 +27,11 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
   const podeEditar = pode(s.perfil, 'vendedores', 'editar');
   // Outras pessoas (com pelo menos um documento), para corrigir documento cadastrado na pessoa errada.
   const outrasPessoas = podeEditar
-    ? await prisma.pessoa.findMany({ where: { id: { not: id }, documentos: { some: {} } }, select: { id: true, nome: true }, orderBy: { nome: 'asc' } })
+    ? (await prisma.pessoa.findMany({
+        where: { id: { not: id }, documentos: { some: {} } },
+        select: { id: true, nome: true, documentos: { select: { tipoDocumento: true, documento: true }, orderBy: { criadoEm: 'asc' } } },
+        orderBy: { nome: 'asc' },
+      })).map((p) => ({ id: p.id, rotulo: `${p.nome} — ${p.documentos.map((d) => `${d.tipoDocumento} ${formatarDocumento(d.documento)}`).join(' · ')}` }))
     : [];
   const d = hoje();
   const promo = ficha.promocao?.situacao;
@@ -212,7 +216,7 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                         <Campo rotulo="Pessoa certa" nome={`mv-${doc.id}`} ajuda="Ex.: o CNPJ do vendedor que foi criado como pessoa nova — escolha a pessoa que já tem o CPF dele.">
                           <select id={`mv-${doc.id}`} name="pessoaDestinoId" className="campo" required defaultValue="">
                             <option value="" disabled>Escolha…</option>
-                            {outrasPessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                            {outrasPessoas.map((p) => <option key={p.id} value={p.id}>{p.rotulo}</option>)}
                           </select>
                         </Campo>
                         <Campo rotulo="Motivo" nome={`mvm-${doc.id}`}><input id={`mvm-${doc.id}`} name="motivo" className="campo" defaultValue="Cadastrado na pessoa errada" required /></Campo>

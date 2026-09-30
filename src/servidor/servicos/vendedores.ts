@@ -336,7 +336,8 @@ export async function moverDocumento(s: Sessao, d: z.infer<typeof esquemaMoverDo
   exigir(s, 'vendedores', 'editar');
   return prisma.$transaction(async (tx) => {
     const v = await exigirVendedor(tx, d.vendedorId);
-    if (v.pessoaId === d.pessoaDestinoId) throw new ErroDeDominio('O documento já está nesta pessoa.');
+    // Já está lá (ex.: o primeiro clique já moveu e a tela não tinha atualizado): nada a fazer, sem erro.
+    if (v.pessoaId === d.pessoaDestinoId) return { pessoaDestinoId: v.pessoaId, vendas: 0, origemFicouVazia: false, jaEstava: true };
     const destino = await tx.pessoa.findUnique({ where: { id: d.pessoaDestinoId } });
     if (!destino) throw new ErroNaoEncontrado('Pessoa de destino não encontrada.');
     const origemId = v.pessoaId;
@@ -351,6 +352,6 @@ export async function moverDocumento(s: Sessao, d: z.infer<typeof esquemaMoverDo
     await reavaliarExpertDaPessoa(tx, s, origemId, 'documento movido para outra pessoa');
     await reavaliarExpertDaPessoa(tx, s, destino.id, 'documento movido de outra pessoa');
     const restantes = await tx.vendedor.count({ where: { pessoaId: origemId } });
-    return { pessoaDestinoId: destino.id, vendas: cotas.length, origemFicouVazia: restantes === 0 };
+    return { pessoaDestinoId: destino.id, vendas: cotas.length, origemFicouVazia: restantes === 0, jaEstava: false };
   }, { timeout: 60_000 });
 }

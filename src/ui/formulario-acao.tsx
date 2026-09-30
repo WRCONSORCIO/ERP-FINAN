@@ -54,7 +54,10 @@ export function FormularioAcao({
     if (resultado?.ok) {
       formRef.current?.reset();
       setConfirmando(false);
-      router.refresh();
+      // A ação pode pedir para abrir outra tela (ex.: a ficha da pessoa para onde o documento foi movido).
+      const irPara = (resultado.dados as { irPara?: unknown } | undefined)?.irPara;
+      if (typeof irPara === 'string' && irPara.startsWith('/')) router.push(irPara);
+      else router.refresh();
     }
   }, [resultado, router]);
 

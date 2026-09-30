@@ -49,7 +49,16 @@ async function ler(db: Db, chave: string): Promise<unknown> {
 export async function layoutCarteira(db: Db): Promise<LayoutCarteira> {
   const v = esquemaLayoutCarteira.safeParse(await ler(db, CHAVES.CARTEIRA_CSV));
   if (!v.success) return LAYOUT_CARTEIRA_INICIAL;
-  return { ...LAYOUT_CARTEIRA_INICIAL, ...v.data, colunas: { ...LAYOUT_CARTEIRA_INICIAL.colunas, ...v.data.colunas } } as LayoutCarteira;
+  // Os nomes de coluna configurados SOMAM aos padrões (nunca os tiram): novos nomes aceitos pelo sistema
+  // valem também em bancos que já têm o layout salvo.
+  const unir = (a: readonly string[], b: readonly string[] | undefined) => [...new Set([...a, ...(b ?? [])])];
+  const colunas = Object.fromEntries(
+    (Object.keys(LAYOUT_CARTEIRA_INICIAL.colunas) as Array<keyof LayoutCarteira['colunas']>).map((k) => [k, unir(LAYOUT_CARTEIRA_INICIAL.colunas[k], v.data.colunas?.[k])]),
+  );
+  return {
+    ...LAYOUT_CARTEIRA_INICIAL, ...v.data, colunas,
+    situacoesCanceladas: unir(LAYOUT_CARTEIRA_INICIAL.situacoesCanceladas, v.data.situacoesCanceladas),
+  } as LayoutCarteira;
 }
 
 export async function layoutsPdf(db: Db): Promise<Record<'FECHAMENTO_CV056E' | 'COMISSAO_VENDEDOR_CV069E' | 'BONUS_GC070A', LayoutPdf>> {

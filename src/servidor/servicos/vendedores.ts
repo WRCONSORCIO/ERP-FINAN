@@ -42,7 +42,7 @@ async function exigirCategoriaParaDocumento(tx: Tx, categoriaId: string, tipo: '
   const c = await tx.categoriaVendedor.findUnique({ where: { id: categoriaId } });
   if (!c || !c.ativo) throw new ErroDeDominio('Categoria inexistente ou desativada.');
   if (!c.documentosAceitos.includes(tipo)) {
-    throw new ErroDeDominio(`A categoria ${c.nome} não é aceita para documento ${tipo}. Regra: CPF é Iniciante; CNPJ é Veterano ou Expert.`);
+    throw new ErroDeDominio(`A categoria ${c.nome} está configurada para aceitar só ${c.documentosAceitos.join(' ou ') || 'nenhum documento'}. Para cadastrar com ${tipo}, edite a categoria em Configurações › Categorias e marque ${tipo} em “Aceita vendedor com”.`);
   }
   return c;
 }

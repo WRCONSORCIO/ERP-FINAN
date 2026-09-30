@@ -159,7 +159,9 @@ export async function apurarCota(tx: Tx, cotaId: string, agora = new Date()): Pr
     for (const p of r.pendencias) pendencias.push({ tipo: p.tipo, destino: p.destino, descricao: p.descricao });
   }
 
-  await sincronizarComissoes(tx, cota, desejadas, pendencias, resumo, agora);
+  // Parcelas que a WR não recebe da administradora (ex.: 2ª do Iniciante): só liberam com decisão manual.
+  const conferencia = await regrasDeConferencia(tx, cota, desejadas);
+  await sincronizarComissoes(tx, cota, conferencia.desejadas, pendencias, resumo, agora, conferencia);
 
   // ---------- 3. Estornos ----------
   const expertCodigo = cota.snapExpertVendedorId && cota.snapExpertCategoria ? cota.snapExpertCategoria.codigo : null;
@@ -181,7 +183,29 @@ export async function apurarCota(tx: Tx, cotaId: string, agora = new Date()): Pr
 
 type CotaApuracao = Prisma.CotaGetPayload<{ include: { snapCategoria: true; snapSegmento: true; snapModalidadeFlex: true; snapVendedor: { include: { pessoa: true } }; snapExpertVendedor: { include: { pessoa: true } }; snapExpertCategoria: true } }>;
 
-async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: LinhaComissao[], pendencias: PendenciaAtual[], resumo: ResumoApuracao, agora: Date) {
+interface Conferencia {
+  desejadas: LinhaComissao[];
+  /** Chaves destino|parcela que aguardam decisão: não liberam sozinhas. */
+  aguardando: Set<string>;
+  /** Chaves decididas como "não pagar". */
+  naoPagar: Set<string>;
+}
+
+async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaComissao[]): Promise<Conferencia> {
+  const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set() };
+  if (cota.snapParcelasConferencia.length === 0) return r;
+  const decisoes = new Map((await tx.conferenciaParcela.findMany({ where: { cotaId: cota.id } })).map((c) => [c.parcela, c.decisao]));
+  r.desejadas = desejadas.filter((l) => {
+    if (l.destino !== 'VENDEDOR' || !cota.snapParcelasConferencia.includes(l.parcela)) return true;
+    const decisao = decisoes.get(l.parcela);
+    if (decisao === 'NAO_PAGAR') { r.naoPagar.add(`VENDEDOR|${l.parcela}`); return false; }
+    if (decisao !== 'PAGAR') r.aguardando.add(`VENDEDOR|${l.parcela}`);
+    return true;
+  });
+  return r;
+}
+
+async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: LinhaComissao[], pendencias: PendenciaAtual[], resumo: ResumoApuracao, agora: Date, conferencia: Conferencia) {
   const ativas = await tx.comissaoApurada.findMany({ where: { cotaId: cota.id, status: { not: 'CANCELADA' } }, orderBy: { criadoEm: 'asc' } });
   const grupos = new Map<string, ComissaoApurada[]>();
   for (const c of ativas) {
@@ -195,7 +219,17 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
     await tx.comissaoApurada.update({ where: { id: c.id }, data: { status: 'CANCELADA', canceladaEm: agora, motivoCancelamento: motivo } });
     resumo.comissoesCanceladas++;
   };
+  const segurar = (destino: string, parcela: number) => {
+    if (!conferencia.aguardando.has(`${destino}|${parcela}`) || parcela > cota.parcelasPagas) return false;
+    pendencias.push({
+      tipo: 'CONFERENCIA_PARCELA', destino: destino as Destino,
+      descricao: `${parcela}ª parcela paga pelo cliente: a WR não recebe esta parcela da administradora. Confira e marque se paga o vendedor.`,
+      detalhe: { parcela },
+    });
+    return true;
+  };
   const liberarSeCabe = async (c: ComissaoApurada) => {
+    if (c.status === 'PREVISTA' && segurar(c.destino, c.parcela)) return;
     if (c.status === 'PREVISTA' && c.parcela <= cota.parcelasPagas) {
       await tx.comissaoApurada.update({ where: { id: c.id }, data: { status: 'LIBERADA', liberadaEm: agora, parcelasPagasNaLiberacao: cota.parcelasPagas } });
       resumo.comissoesLiberadas++;
@@ -220,9 +254,12 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
         await liberarSeCabe(original);
         continue;
       }
-      for (const c of abertas) await cancelar(c, d ? 'Reapuração: snapshot ou regra mudou — substituída por nova linha' : 'Reapuração: comissão não se aplica mais a esta venda');
+      const motivo = d ? 'Reapuração: snapshot ou regra mudou — substituída por nova linha'
+        : conferencia.naoPagar.has(chave) ? 'Conferência manual: decidido não pagar esta parcela ao vendedor' : 'Reapuração: comissão não se aplica mais a esta venda';
+      for (const c of abertas) await cancelar(c, motivo);
       if (d && (d.liberada || !cota.cancelada)) {
-        await criarComissao(tx, cota.id, d, null, d.valor, d.memoria, cota.parcelasPagas, agora);
+        const segura = segurar(d.destino, d.parcela);
+        await criarComissao(tx, cota.id, d, null, d.valor, d.memoria, segura ? 0 : cota.parcelasPagas, agora);
         resumo.comissoesCriadas++;
       }
       continue;

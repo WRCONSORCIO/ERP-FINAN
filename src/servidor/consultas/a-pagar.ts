@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { dec, ZERO, type Dec } from '@/lib/dinheiro';
 import { competenciaDe, fimExclusivo, hoje, periodoDoMes } from '@/lib/datas';
-import { escopoComissoes, escopoEstornos, exigir, type Sessao } from '../contexto';
+import { escopoComissoes, escopoCotas, escopoEstornos, exigir, type Sessao } from '../contexto';
 
 export interface LinhaBeneficiario {
   pessoaId: string;
@@ -66,4 +66,28 @@ export async function previaFechamento(s: Sessao, competencia: string) {
 
 export function competenciaPadrao(): string {
   return competenciaDe(hoje());
+}
+
+/** Parcelas pagas pelo cliente que a WR não recebe da administradora e aguardam decisão (Pagar / Não pagar). */
+export async function conferenciasPendentes(s: Sessao) {
+  exigir(s, 'comissoes');
+  const pend = await prisma.pendencia.findMany({
+    where: { tipo: 'CONFERENCIA_PARCELA', resolvidaEm: null, cota: escopoCotas(s) },
+    include: {
+      cota: {
+        select: {
+          id: true, clienteNome: true, grupo: true, cota: true, credito: true, dataVenda: true, parcelasPagas: true,
+          snapVendedor: { select: { nome: true } }, snapCategoria: { select: { nome: true } },
+          comissoes: { where: { destino: 'VENDEDOR', status: 'PREVISTA' }, select: { parcela: true, valor: true } },
+        },
+      },
+    },
+    orderBy: { criadoEm: 'asc' },
+    take: 1000,
+  });
+  return pend.filter((p) => p.cota).map((p) => {
+    const parcela = Number((p.detalhe as { parcela?: number } | null)?.parcela ?? 0);
+    const cota = p.cota!;
+    return { id: p.id, parcela, cota, valor: cota.comissoes.find((c) => c.parcela === parcela)?.valor ?? null };
+  });
 }

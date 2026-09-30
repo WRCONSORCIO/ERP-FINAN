@@ -7,7 +7,8 @@ import { pode } from '@/lib/permissoes';
 import { ROTULO_DESTINO, type Destino } from '@/dominio/comissao';
 import { exigirPagina } from '@/servidor/sessao';
 import { param, type Params } from '@/servidor/consultas/comum';
-import { aPagar, competenciaPadrao, detalheBeneficiario, folhas, previaFechamento } from '@/servidor/consultas/a-pagar';
+import { aPagar, competenciaPadrao, conferenciasPendentes, detalheBeneficiario, folhas, previaFechamento } from '@/servidor/consultas/a-pagar';
+import { DecidirConferencia } from '../clientes/conferencia';
 import { Aviso, Campo, Cartao, Dinheiro, EstadoVazio, Etiqueta, LinkBotao, Monograma, Pagina, Secao, classeBotao } from '@/ui/base';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import { MemoriaDeCalculo } from '@/ui/memoria';
@@ -23,8 +24,9 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
   const pessoaSel = param(sp, 'pessoa');
   const competencia = /^\d{4}-\d{2}$/.test(param(sp, 'competencia')) ? param(sp, 'competencia') : competenciaPadrao();
   const podeEditar = pode(s.perfil, 'comissoes', 'editar');
-  const [d, lista, detalhe, previa] = await Promise.all([
+  const [d, lista, detalhe, previa, conferencias] = await Promise.all([
     aPagar(s), folhas(s), pessoaSel ? detalheBeneficiario(s, pessoaSel) : Promise.resolve(null), podeEditar ? previaFechamento(s, competencia) : Promise.resolve(null),
+    conferenciasPendentes(s),
   ]);
   const nomeSel = d.linhas.find((l) => l.pessoaId === pessoaSel)?.nome;
 
@@ -41,6 +43,33 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
         <Cartao rotulo="Estorno a cobrar" valor={<Dinheiro valor={d.totais.estornoACobrar} />} tom="ambar" detalhe="Informação: não é descontado automaticamente da folha" href="/estornos" />
       </div>
       {!d.estornoSemTitular.isZero() ? <Aviso tom="vermelho" titulo="Estorno sem responsável para cobrar">{formatarMoeda(d.estornoSemTitular)} em estornos não têm de quem ser cobrados. Veja em <Link href="/estornos">Estornos</Link>.</Aviso> : null}
+
+      {conferencias.length > 0 ? (
+        <Secao
+          titulo={`Conferir antes de pagar (${conferencias.length})`}
+          descricao="O cliente pagou uma parcela que a WR não recebe da administradora (hoje: a 2ª do Iniciante). A comissão fica prevista até alguém decidir: Pagar libera para a próxima folha; Não pagar cancela a linha. Tudo fica registrado."
+          semPadding
+        >
+          <div className="tabela-quadro">
+            <table className="tabela">
+              <thead><tr><th>Cliente</th><th>Grupo/Cota</th><th>Vendedor</th><th className="direita">Parcela</th><th className="direita">Parc. pagas</th><th className="direita">Comissão</th>{podeEditar ? <th>Decisão</th> : null}</tr></thead>
+              <tbody>
+                {conferencias.map((c) => (
+                  <tr key={c.id}>
+                    <td><Link href={`/clientes/${c.cota.id}`}>{c.cota.clienteNome}</Link></td>
+                    <td className="numero">{c.cota.grupo}/{c.cota.cota}</td>
+                    <td>{c.cota.snapVendedor?.nome ?? '—'}{c.cota.snapCategoria ? <span className="block text-[11px] text-wr-texto-3">{c.cota.snapCategoria.nome}</span> : null}</td>
+                    <td className="direita numero">{c.parcela}ª</td>
+                    <td className="direita numero">{c.cota.parcelasPagas}</td>
+                    <td className="direita">{c.valor ? <Dinheiro valor={c.valor} /> : '—'}</td>
+                    {podeEditar ? <td className="min-w-[440px]"><DecidirConferencia cotaId={c.cota.id} parcela={c.parcela} /></td> : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Secao>
+      ) : null}
 
       <Secao titulo="Beneficiários" descricao="Clique no nome para ver cada venda e parcela, com a conta de cada valor." semPadding>
         {d.linhas.length === 0 ? <EstadoVazio titulo="Nada a pagar">Não há comissões pagas pela WR para as equipes que você vê.</EstadoVazio> : (

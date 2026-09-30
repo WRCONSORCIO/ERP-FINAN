@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { fecharFolha, marcarFolhaPaga } from '@/servidor/servicos/folha';
 import { definirEscopoBase } from '@/servidor/servicos/regras';
 import { movimentarEstorno } from '@/servidor/servicos/estornos';
-import { resolverDivergencia, transferirVenda } from '@/servidor/servicos/cotas';
+import { decidirConferencia, resolverDivergencia, transferirVenda } from '@/servidor/servicos/cotas';
 import { vincularNomeImportado } from '@/servidor/servicos/vendedores';
 import { apurarTudo, comissoesDa, csv, D, estrutura, importar, preparar, valores, vendedor } from './ajuda';
 
@@ -70,8 +70,15 @@ describe('fluxo financeiro completo', () => {
     expect(await prisma.cotaVersao.count({ where: { cotaId: cota.id } })).toBe(2);
     const depois = await comissoesDa(cota.id);
     expect(depois.map((c) => c.id)).toEqual(antes.map((c) => c.id)); // mesmas linhas (nada recriado)
-    expect(depois.find((c) => c.destino === 'VENDEDOR' && c.parcela === 2)?.status).toBe('LIBERADA');
-    expect(depois.find((c) => c.destino === 'VENDEDOR' && c.parcela === 2)?.parcelasPagasNaLiberacao).toBe(2);
+    // 2ª parcela do Iniciante: a WR não recebe da administradora — aguarda conferência antes de liberar.
+    expect(depois.find((c) => c.destino === 'VENDEDOR' && c.parcela === 2)?.status).toBe('PREVISTA');
+    expect(await prisma.pendencia.count({ where: { cotaId: cota.id, tipo: 'CONFERENCIA_PARCELA', resolvidaEm: null } })).toBe(1);
+    await decidirConferencia(admin, { cotaId: cota.id, parcela: 2, decisao: 'PAGAR', motivo: 'conferido' });
+    await apurarTudo();
+    const liberada = (await comissoesDa(cota.id)).find((c) => c.destino === 'VENDEDOR' && c.parcela === 2);
+    expect(liberada?.id).toBe(depois.find((c) => c.destino === 'VENDEDOR' && c.parcela === 2)?.id); // mesma linha, só liberada
+    expect(liberada?.status).toBe('LIBERADA');
+    expect(liberada?.parcelasPagasNaLiberacao).toBe(2);
   });
 
   it('folha fecha só o liberado pago pela WR, congela e é marcada paga; correção posterior vira ajuste', async () => {

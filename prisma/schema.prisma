@@ -188,6 +188,12 @@ enum TipoPendencia {
   AJUSTE_FOLHA_FECHADA
   ESTORNO_DIVERGENTE
   DIVERGENCIA_VENDEDOR
+  CONFERENCIA_PARCELA
+}
+
+enum DecisaoConferencia {
+  PAGAR
+  NAO_PAGAR
 }
 
 enum StatusDivergencia {
@@ -234,10 +240,11 @@ model Usuario {
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
 
-  gerencia     Gerencia?     @relation(fields: [gerenciaId], references: [id])
-  equipe       Equipe?       @relation(fields: [equipeId], references: [id])
+  gerencia     Gerencia?            @relation(fields: [gerenciaId], references: [id])
+  equipe       Equipe?              @relation(fields: [equipeId], references: [id])
   auditorias   AuditLog[]
   notificacoes Notificacao[]
+  conferencias ConferenciaParcela[]
 
   @@map("usuario")
 }
@@ -264,7 +271,7 @@ model Administradora {
 
   cotas       Cota[]
   importacoes Importacao[]
-  cartas    Carta[]
+  cartas      Carta[]
 
   @@map("administradora")
 }
@@ -412,6 +419,8 @@ model CategoriaVendedor {
   // Documento desta categoria recebe também sobre as vendas dos outros CNPJ da mesma pessoa
   // (regra da WR: o CNPJ Expert não vende; recebe o % do Expert sobre as vendas do CNPJ Veterano).
   recebeSobreOutrosDocumentos Boolean         @default(false)
+  // Parcelas em que a WR não recebe da administradora: pagar o vendedor exige conferência manual (Iniciante: 2ª).
+  parcelasConferenciaManual   Int[]           @default([])
   ativo                       Boolean         @default(true)
   criadoEm                    DateTime        @default(now())
 
@@ -526,25 +535,27 @@ model Cota {
   vendedorId String?
 
   // ---- SNAPSHOT congelado na entrada (6.3) ----
-  snapVendedorId         String?
-  snapCategoriaId        String?
-  snapSegmentoId         String?
-  snapModalidadeFlexId   String?
-  snapEquipeId           String?
-  snapGerenciaId         String?
-  snapSupervisorPessoaId String?
-  snapGerentePessoaId    String?
-  snapRecuperacao        Boolean   @default(false)
+  snapVendedorId          String?
+  snapCategoriaId         String?
+  snapSegmentoId          String?
+  snapModalidadeFlexId    String?
+  snapEquipeId            String?
+  snapGerenciaId          String?
+  snapSupervisorPessoaId  String?
+  snapGerentePessoaId     String?
+  snapRecuperacao         Boolean   @default(false)
   // Comportamento da categoria congelado com ela: editar a categoria muda só o futuro.
-  snapPagaPelaWr         Boolean?
-  snapGeraSupervisao     Boolean?
-  snapGeraGerencia       Boolean?
+  snapPagaPelaWr          Boolean?
+  snapGeraSupervisao      Boolean?
+  snapGeraGerencia        Boolean?
   // CNPJ da mesma pessoa que recebe sobre esta venda (Expert sobre o Veterano), congelado na data da venda.
-  snapExpertVendedorId   String?
-  snapExpertCategoriaId  String?
-  snapExpertPagaPelaWr   Boolean?
-  snapCongeladoEm        DateTime?
-  snapOrigem             String? // IMPORTACAO | TRANSFERENCIA | RECONGELAMENTO
+  snapExpertVendedorId    String?
+  snapExpertCategoriaId   String?
+  snapExpertPagaPelaWr    Boolean?
+  // Parcelas do vendedor que exigem conferência manual antes de liberar (congelado da categoria na venda).
+  snapParcelasConferencia Int[]     @default([])
+  snapCongeladoEm         DateTime?
+  snapOrigem              String? // IMPORTACAO | TRANSFERENCIA | RECONGELAMENTO
 
   primeiraImportacaoId String?
   ultimaImportacaoId   String?
@@ -572,6 +583,7 @@ model Cota {
   eventos        EventoDominio[]
   pendencias     Pendencia[]
   divergencias   DivergenciaVendedor[]
+  conferencias   ConferenciaParcela[]
 
   @@unique([administradoraId, contrato, grupo, cota, cpfCliente], name: "identidade")
   @@index([dataVenda])
@@ -1190,6 +1202,25 @@ model Anexo {
   @@map("anexo")
 }
 
+/**
+ * Decisão manual sobre pagar ao vendedor uma parcela que a WR não recebe da administradora (ex.: 2ª do Iniciante).
+ */
+model ConferenciaParcela {
+  id            String             @id @default(cuid())
+  cotaId        String
+  parcela       Int
+  decisao       DecisaoConferencia
+  motivo        String
+  decididoPorId String
+  decididoEm    DateTime           @default(now())
+
+  cota        Cota    @relation(fields: [cotaId], references: [id])
+  decididoPor Usuario @relation(fields: [decididoPorId], references: [id])
+
+  @@unique([cotaId, parcela])
+  @@map("conferencia_parcela")
+}
+
 // ============================================================
 // CARTAS CONTEMPLADAS — compra/revenda/intermediação de cotas JÁ contempladas.
 // Processo de negócio distinto da venda de cota nova (Cota/Vendedor acima):
@@ -1199,7 +1230,7 @@ model Anexo {
 // ============================================================
 
 enum TipoNegociacaoCarta {
-  COMPRA_VENDA  // compramos do cliente e revendemos depois (fica em estoque até vender)
+  COMPRA_VENDA // compramos do cliente e revendemos depois (fica em estoque até vender)
   INTERMEDIACAO // ponta a ponta, nunca passa pelo caixa/estoque da empresa
 }
 
@@ -1245,24 +1276,24 @@ model VendedorCarta {
 }
 
 model Carta {
-  id                String              @id @default(cuid())
-  codigo            String              @unique // "CART-0001", via sequência (carta_codigo_seq)
+  id     String @id @default(cuid())
+  codigo String @unique // "CART-0001", via sequência (carta_codigo_seq)
 
-  administradoraId  String
-  tipoNegociacao    TipoNegociacaoCarta @default(COMPRA_VENDA)
-  status            StatusCarta         @default(ESTOQUE)
+  administradoraId String
+  tipoNegociacao   TipoNegociacaoCarta @default(COMPRA_VENDA)
+  status           StatusCarta         @default(ESTOQUE)
 
-  vendedorCartaId     String?
-  clienteVendedorId   String
-  clienteCompradorId  String?
+  vendedorCartaId    String?
+  clienteVendedorId  String
+  clienteCompradorId String?
 
-  valorCarta        Decimal  @db.Decimal(18, 2) @default(0)
-  valorCompra       Decimal  @db.Decimal(18, 2) @default(0)
-  valorVenda        Decimal? @db.Decimal(18, 2)
-  valorParcela      Decimal  @db.Decimal(18, 2) @default(0)
-  parcelasPagas     Int      @default(0)
-  parcelasAPagar    Int      @default(0)
-  comissaoVendedor  Decimal  @db.Decimal(18, 2) @default(0)
+  valorCarta       Decimal  @default(0) @db.Decimal(18, 2)
+  valorCompra      Decimal  @default(0) @db.Decimal(18, 2)
+  valorVenda       Decimal? @db.Decimal(18, 2)
+  valorParcela     Decimal  @default(0) @db.Decimal(18, 2)
+  parcelasPagas    Int      @default(0)
+  parcelasAPagar   Int      @default(0)
+  comissaoVendedor Decimal  @default(0) @db.Decimal(18, 2)
 
   dataCompra        DateTime  @db.Date
   dataVenda         DateTime? @db.Date

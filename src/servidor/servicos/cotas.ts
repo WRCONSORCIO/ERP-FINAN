@@ -48,7 +48,7 @@ export async function transferirVenda(s: Sessao, d: z.infer<typeof esquemaTransf
   return prisma.$transaction((tx) => transferir(tx, s, d.cotaId, d.vendedorNovoId, d.motivo, 'MANUAL'));
 }
 
-async function recongelarUma(tx: Tx, s: Sessao | null, cotaId: string, motivo: string, cadastro: Awaited<ReturnType<typeof carregarCadastroCasamento>>) {
+export async function recongelarUma(tx: Tx, s: Sessao | null, cotaId: string, motivo: string, cadastro: Awaited<ReturnType<typeof carregarCadastroCasamento>>) {
   const cota = await tx.cota.findUniqueOrThrow({ where: { id: cotaId } });
   let vendedorId = cota.vendedorId;
   if (!vendedorId) {

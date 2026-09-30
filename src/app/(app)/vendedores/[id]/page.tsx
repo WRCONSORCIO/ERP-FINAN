@@ -12,7 +12,7 @@ import { BotaoVoltar } from '@/ui/botao-voltar';
 import { Dobra } from '@/ui/dobra';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import {
-  alterarAlocacaoAcao, alterarCategoriaAcao, cancelarRecuperacaoAcao, corrigirInicioAcao, corrigirNomeAcao, desligarAcao, moverDocumentoAcao, reativarAcao, registrarRecuperacaoAcao, vincularNomeAcao,
+  alterarAlocacaoAcao, alterarCategoriaAcao, corrigirEquipeAcao, cancelarRecuperacaoAcao, corrigirInicioAcao, corrigirNomeAcao, desligarAcao, moverDocumentoAcao, reativarAcao, registrarRecuperacaoAcao, vincularNomeAcao,
 } from '../acoes';
 
 export const metadata: Metadata = { title: 'Ficha do vendedor' };
@@ -115,7 +115,7 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                   <p className="rotulo mb-1">Histórico de equipe / gerência</p>
                   <div className="tabela-quadro rounded-lg border border-wr-borda">
                     <table className="tabela">
-                      <thead><tr><th>Gerência</th><th>Equipe</th><th>De</th><th>Até</th><th>Motivo</th></tr></thead>
+                      <thead><tr><th>Gerência</th><th>Equipe</th><th>De</th><th>Até</th><th>Motivo</th>{podeEditar ? <th>Cadastrado errado? Corrigir equipe</th> : null}</tr></thead>
                       <tbody>
                         {doc.alocacoes.map((a) => (
                           <tr key={a.id}>
@@ -123,6 +123,18 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                             <td><DataCurta valor={a.vigenteDe} /></td>
                             <td>{a.vigenteAte ? <DataCurta valor={a.vigenteAte} /> : <Etiqueta tom="verde">atual</Etiqueta>}</td>
                             <td className="text-wr-texto-2">{a.motivo ?? <Traco />}</td>
+                            {podeEditar ? (
+                              <td>
+                                <FormularioAcao acao={corrigirEquipeAcao} rotulo="Corrigir" emLinha confirmacao="Correção de cadastro: troca a equipe DESTE período inteiro e recalcula as vendas dele com o supervisor e o gerente certos. O que já está em folha fechada não muda (a diferença vira ajuste). Para uma mudança de equipe de verdade, use “Mudar de equipe”.">
+                                  <input type="hidden" name="alocacaoId" value={a.id} />
+                                  <select name="equipeId" aria-label="Equipe certa" className="campo w-48" defaultValue="" required>
+                                    <option value="" disabled>Equipe certa…</option>
+                                    {opcoes.equipes.filter((e) => e.id !== a.equipeId).map((e) => <option key={e.id} value={e.id}>{e.gerencia.nome} › {e.nome}</option>)}
+                                  </select>
+                                  <input name="motivo" aria-label="Motivo" placeholder="Motivo" className="campo w-40" required />
+                                </FormularioAcao>
+                              </td>
+                            ) : null}
                           </tr>
                         ))}
                       </tbody>

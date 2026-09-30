@@ -11,6 +11,7 @@ import { exigir, type Sessao } from '../contexto';
 import { enfileirarApuracao } from '../fila';
 import { documentosDaPessoa, expertNaData, resolverSnapshot } from '../snapshot';
 import { carregarCadastroCasamento } from '../cadastro-casamento';
+import { recongelarUma } from './cotas';
 import { casarVendedor } from '@/dominio/casamento';
 import { zBooleano, zData, zDataOpcional, zId, zIdOpcional, zMotivo, zTexto, zTextoOpcional } from './esquemas';
 
@@ -32,6 +33,7 @@ export const esquemaDesligar = z.object({ vendedorId: zId, data: zData, motivo: 
 export const esquemaReativar = z.object({ vendedorId: zId, motivo: zMotivo });
 export const esquemaVincularNome = z.object({ nomeImportado: zTexto(200), vendedorId: zId });
 export const esquemaMoverDocumento = z.object({ vendedorId: zId, pessoaDestinoId: zId, motivo: zMotivo });
+export const esquemaCorrigirEquipe = z.object({ alocacaoId: zId, equipeId: zId, motivo: zMotivo });
 export const esquemaCorrigirNome = z.object({ vendedorId: zId, nome: zTexto(200), tambemPessoa: zBooleano, motivo: zMotivo });
 
 async function exigirVendedor(tx: Tx, id: string): Promise<Vendedor> {
@@ -249,7 +251,7 @@ export async function alterarAlocacao(s: Sessao, d: z.infer<typeof esquemaAltera
     if (atual && plano.encerrarAnteriorEm) {
       const c = await vendasApuradasDesde(tx, { vendedorId: v.id, campo: 'snapEquipeId', valor: atual.equipeId, desde: d.vigenteDe });
       if (c) {
-        throw new ErroDeDominio(`A venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)} já foi calculada na equipe ${atual.equipe.nome}. Para não mudar o que já foi calculado, a nova equipe precisa começar depois dessa data.`);
+        throw new ErroDeDominio(`A venda ${c.grupo}/${c.cota} de ${formatarData(c.dataVenda)} já foi calculada na equipe ${atual.equipe.nome}. Para não mudar o que já foi calculado, a nova equipe precisa começar depois dessa data. Se o cadastro estava errado desde o início, use “Corrigir” no histórico de equipe.`);
       }
       await tx.vendedorAlocacao.update({ where: { id: atual.id }, data: { vigenteAte: plano.encerrarAnteriorEm } });
     }
@@ -260,6 +262,36 @@ export async function alterarAlocacao(s: Sessao, d: z.infer<typeof esquemaAltera
       depois: { equipe: equipe.nome, gerencia: equipe.gerencia.nome, vigenteDe: nova.vigenteDe }, contexto: { motivo: d.motivo },
     });
   });
+}
+
+/**
+ * Correção de cadastro (não é mudança de equipe): o período estava com a equipe errada desde o início. Troca a
+ * equipe do período e recongela as vendas dele — supervisor e gerente passam a ser os da equipe certa na data
+ * de cada venda. O que já estava em folha fechada não muda: a diferença vira ajuste na próxima folha.
+ */
+export async function corrigirEquipe(s: Sessao, d: z.infer<typeof esquemaCorrigirEquipe>) {
+  exigir(s, 'vendedores', 'editar');
+  return prisma.$transaction(async (tx) => {
+    const aloc = await tx.vendedorAlocacao.findUnique({ where: { id: d.alocacaoId }, include: { equipe: { include: { gerencia: true } } } });
+    if (!aloc) throw new ErroNaoEncontrado();
+    if (aloc.equipeId === d.equipeId) throw new ErroDeDominio('O período já está nesta equipe.');
+    const equipe = await tx.equipe.findUnique({ where: { id: d.equipeId }, include: { gerencia: true } });
+    if (!equipe || equipe.status !== 'ATIVO') throw new ErroDeDominio('Equipe inexistente ou inativa.');
+    await tx.vendedorAlocacao.update({ where: { id: aloc.id }, data: { equipeId: d.equipeId, motivo: `correção: ${d.motivo}` } });
+    const cotas = await tx.cota.findMany({
+      where: { snapVendedorId: aloc.vendedorId, dataVenda: { gte: aloc.vigenteDe, ...(aloc.vigenteAte ? { lte: aloc.vigenteAte } : {}) } },
+      select: { id: true },
+    });
+    const cadastro = await carregarCadastroCasamento(tx);
+    let recalculadas = 0;
+    for (const c of cotas) if (await recongelarUma(tx, s, c.id, `equipe corrigida: ${d.motivo}`, cadastro)) recalculadas++;
+    await auditar(tx, {
+      sessao: s, acao: 'ALTERACAO_ALOCACAO', entidade: 'VendedorAlocacao', entidadeId: aloc.id,
+      antes: { equipe: aloc.equipe.nome, gerencia: aloc.equipe.gerencia.nome }, depois: { equipe: equipe.nome, gerencia: equipe.gerencia.nome },
+      contexto: { operacao: 'correção de equipe do período', motivo: d.motivo, vendasRecalculadas: recalculadas },
+    });
+    return { vendas: cotas.length, recalculadas };
+  }, { timeout: 120_000 });
 }
 
 export async function registrarRecuperacao(s: Sessao, d: z.infer<typeof esquemaRecuperacao>) {

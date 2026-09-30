@@ -90,6 +90,7 @@ const docFmt = (d: string) => (d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 
 export interface ParcelaRelatorio {
   grupo: string; cota: string; contrato: string; credito: number; parcela: number; data: string; venda: string;
   /** CPF/CNPJ do vendedor no cabeçalho do relatório. */ doc: string; valor?: number;
+  /** Lançamento de cancelamento (valor negativo) em vez de parcela. */ cancelamento?: boolean;
 }
 
 /** CV056E (comissão da WR) no layout real: uma venda em 3 linhas abaixo do vendedor. Parcela 1 = "inclusão". */
@@ -102,8 +103,9 @@ export function relatorioWr(itens: ParcelaRelatorio[]): string[] {
     linhas.push(
       `VENDEDOR (CPF/CNPJ): ${docFmt(i.doc)} - VENDEDOR TESTE`,
       `${i.contrato} E CLIENTE ${i.grupo}/${i.cota} / 31 90000.0000`,
-      `${i.grupo.padStart(4, '0')}.${i.cota.padStart(4, '0')}.1 CREDITO P/IMOVEL 7 ${moeda(i.credito)} ${moeda(v)} 0,00 0,00 1,0000`,
-      i.parcela === 1 ? `INCLUSAO DE PLANO ${i.data} ${i.venda} I` : `PAGAMENTO COMISSAO ${i.parcela} ${i.data} ${i.venda} I`,
+      `${i.grupo.padStart(4, '0')}.${i.cota.padStart(4, '0')}.1 CREDITO P/IMOVEL 7 ${moeda(i.credito)} ${moeda(v)}${i.cancelamento ? '-' : ''} 0,00 0,00 1,0000`,
+      i.cancelamento ? `CANCELAMENTO DE PLANO ${i.data} ${i.venda} I`
+        : i.parcela === 1 ? `INCLUSAO DE PLANO ${i.data} ${i.venda} I` : `PAGAMENTO COMISSAO ${i.parcela} ${i.data} ${i.venda} I`,
       `Total do Vendedor ......: ${moeda(v)} 0,00 0,00`,
     );
   }
@@ -125,6 +127,25 @@ export function relatorioAdm(itens: ParcelaRelatorio[]): string[] {
     );
   }
   return linhas;
+}
+
+/** Contrato no formato dos relatórios (a base de teste usa outro; a venda é achada por grupo/cota). */
+export const contratoRelatorio = (grupo: string, cota: string) => `${grupo.padStart(2, '0')}${cota.padStart(3, '0')}I10`;
+
+/** O cancelamento da venda aparecendo no relatório da WR: é isso que faz o estorno existir. */
+export function cancelamentoWr(p: { grupo: string; cota: string; contrato?: string; data: string; venda: string; doc: string }): string[] {
+  return relatorioWr([{ grupo: p.grupo, cota: p.cota, contrato: p.contrato ?? contratoRelatorio(p.grupo, p.cota), credito: 100000, parcela: 1, data: p.data, venda: p.venda, doc: p.doc, valor: 1000, cancelamento: true }]);
+}
+
+/** Importa a base e, para as vendas canceladas, o relatório da WR com o cancelamento (sem ele não há estorno). */
+export async function importarCanceladas(s: Sessao, administradoraId: string, linhas: LinhaTeste[], dataRelatorio = '05/10/2026') {
+  await importar(s, administradoraId, csv(linhas));
+  const canceladas = linhas.filter((l) => l.situacao === 'CANCELADO');
+  if (canceladas.length === 0) return;
+  await importarRelatorio(s, administradoraId, relatorioWr(canceladas.map((l) => ({
+    grupo: l.grupo, cota: l.cota, contrato: contratoRelatorio(l.grupo, l.cota), credito: 100000, parcela: 1, data: dataRelatorio, venda: l.venda,
+    doc: (l.docVendedor ?? '').replace(/\D/g, ''), valor: 1000, cancelamento: true,
+  }))));
 }
 
 let seqPdf = 0;

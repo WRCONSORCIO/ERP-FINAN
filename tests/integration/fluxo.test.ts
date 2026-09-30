@@ -5,7 +5,7 @@ import { definirEscopoBase } from '@/servidor/servicos/regras';
 import { movimentarEstorno } from '@/servidor/servicos/estornos';
 import { decidirConferencia, resolverDivergencia, transferirVenda } from '@/servidor/servicos/cotas';
 import { vincularNomeImportado } from '@/servidor/servicos/vendedores';
-import { apurarTudo, comissoesDa, csv, D, estrutura, importar, importarRelatorio, preparar, relatorioAdm, relatorioWr, valores, vendedor } from './ajuda';
+import { apurarTudo, cancelamentoWr, comissoesDa, csv, D, estrutura, importar, importarRelatorio, preparar, relatorioAdm, relatorioWr, valores, vendedor } from './ajuda';
 
 describe('fluxo financeiro completo', () => {
   it('importa, casa vendedor por documento, congela, apura e libera quando a parcela vem no relatório da WR', async () => {
@@ -150,12 +150,16 @@ describe('fluxo financeiro completo', () => {
     const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
     await apurarTudo();
+    // Cancelada só na base: o estorno ainda não existe (regra da WR: só depois de constar em relatório de comissão).
+    expect(await prisma.estorno.count()).toBe(0);
+    await importarRelatorio(admin, administradoraId, cancelamentoWr({ grupo: '20', cota: '5', contrato: '20005I10', data: '05/10/2026', venda: '05/09/2026', doc: '11222333000181' }));
     const estornos = await prisma.estorno.findMany();
     expect(estornos).toHaveLength(1); // gerência não participa (configuração)
     expect(estornos[0]).toMatchObject({ destino: 'VENDEDOR', tipo: 'CANCELAMENTO', status: 'A_COBRAR', parcelasPagas: 1 });
     expect(estornos[0]?.comissaoBase.toFixed(2)).toBe('1600.00');
     expect(estornos[0]?.valor.toFixed(2)).toBe('800.00');
     expect(estornos[0]?.dataEvento.toISOString().slice(0, 10)).toBe('2026-09-20');
+    expect(estornos[0]?.dataDebitoAdm?.toISOString().slice(0, 10)).toBe('2026-10-05'); // data do relatório
 
     // Reapurar não cobra duas vezes
     await importar(admin, administradoraId, csv([{ ...linha, situacao: 'CANCELADO', cancelamento: '20/09/2026', cliente: 'NOME CORRIGIDO' }]));
@@ -179,6 +183,7 @@ describe('fluxo financeiro completo', () => {
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
     const linha = { grupo: '30', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 3, docVendedor: '11222333000181', flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '25/09/2026' };
     await importar(admin, administradoraId, csv([linha]));
+    await importarRelatorio(admin, administradoraId, cancelamentoWr({ grupo: '30', cota: '1', data: '05/10/2026', venda: '10/09/2026', doc: '11222333000181' }));
     const cota = await prisma.cota.findFirstOrThrow();
     expect(cota.snapRecuperacao).toBe(true);
     const e = await prisma.estorno.findFirstOrThrow();

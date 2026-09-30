@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { definirEscopoBase } from '@/servidor/servicos/regras';
 import { desligarVendedor } from '@/servidor/servicos/vendedores';
-import { D, apurarTudo, comissoesDa, csv, estrutura, importar, importarRelatorio, preparar, relatorioAdm, valores, vendedor } from './ajuda';
+import { D, apurarTudo, comissoesDa, csv, estrutura, importar, importarCanceladas, importarRelatorio, preparar, relatorioAdm, valores, vendedor } from './ajuda';
 
 const VETERANO_DOC = '11222333000181';
 const EXPERT_DOC = '11444777000161';
@@ -39,7 +39,7 @@ describe('Expert recebe sobre as vendas do CNPJ Veterano da mesma pessoa', () =>
     expect(linhas.some((c) => c.destino === 'SUPERVISAO')).toBe(false);
   });
 
-  it('cadastrar o CNPJ Expert depois da importação recalcula as vendas desde a data; desligar remove dali em diante', async () => {
+  it('cadastrar o CNPJ Expert depois da importação recalcula as vendas desde a data; desligado não recebe mais nada', async () => {
     const { admin, administradoraId, cat } = await preparar();
     const est = await estrutura(admin, 'A');
     const vet = await vendedor(admin, { nome: 'Carla ME', tipo: 'CNPJ', doc: VETERANO_DOC, categoriaId: cat.VETERANO, equipeId: est.equipeId });
@@ -56,10 +56,17 @@ describe('Expert recebe sobre as vendas do CNPJ Veterano da mesma pessoa', () =>
     expect((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT').map((c) => c.valor.toFixed(2))).toEqual(['300.00', '100.00', '100.00']);
     expect((await comissoesDa(c2.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(3);
 
+    // A 1ª parcela da venda 1 saiu no relatório antes do desligamento: continua devida.
+    const p1 = { grupo: '2', cota: '1', contrato: '02001I10', credito: 100000, parcela: 1, data: '12/09/2026', venda: '10/09/2026', doc: EXPERT_DOC, valor: 300 };
+    await importarRelatorio(admin, administradoraId, relatorioAdm([p1]));
     await desligarVendedor(admin, { vendedorId: exp.id, data: D('2026-09-15'), motivo: 'deixou de ser Expert' });
     await apurarTudo();
-    expect((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(3);
+    // Regra da WR: desligado não recebe mais comissão — só fica o que já tinha saído no relatório até o desligamento.
+    expect(valores((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT'))).toEqual(['EXPERT:1:300.00:LIBERADA']);
     expect((await comissoesDa(c2.id)).filter((c) => c.destino === 'EXPERT')).toHaveLength(0);
+    // Parcela que só aparece no relatório depois do desligamento não é paga.
+    await importarRelatorio(admin, administradoraId, relatorioAdm([{ ...p1, parcela: 3, data: '20/09/2026', valor: 100 }]));
+    expect(valores((await comissoesDa(c1.id)).filter((c) => c.destino === 'EXPERT'))).toEqual(['EXPERT:1:300.00:LIBERADA']);
   });
 
   it('cancelamento: o Expert também devolve (estorno próprio, pela regra do Expert)', async () => {
@@ -69,9 +76,9 @@ describe('Expert recebe sobre as vendas do CNPJ Veterano da mesma pessoa', () =>
     const exp = await vendedor(admin, { nome: 'Carla Expert', tipo: 'CNPJ', doc: EXPERT_DOC, categoriaId: cat.EXPERT, equipeId: est.equipeId, desde: '2026-09-01', pessoaId: vet.pessoaId });
     const cfg = await prisma.configuracaoEstorno.findFirstOrThrow();
     await definirEscopoBase(admin, { configuracaoId: cfg.id, escopoBase: 'PARCELAS_RECEBIDAS' });
-    await importar(admin, administradoraId, csv([
+    await importarCanceladas(admin, administradoraId, [
       { grupo: '3', cota: '1', credito: '100.000,00', venda: '10/09/2026', pagas: 1, docVendedor: VETERANO_DOC, flex: 'INTEGRAL', situacao: 'CANCELADO', cancelamento: '20/09/2026' },
-    ]));
+    ]);
     const estornos = await prisma.estorno.findMany({ where: { status: { not: 'INVALIDADO' } }, orderBy: { destino: 'asc' } });
     expect(estornos.map((e) => `${e.destino}:${e.valor.toFixed(2)}`)).toEqual(['VENDEDOR:400.00', 'EXPERT:150.00']);
     expect(estornos.find((e) => e.destino === 'EXPERT')?.titularVendedorId).toBe(exp.id);

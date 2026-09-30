@@ -242,5 +242,5 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
 }
 
 function EstornoVazio({ cancelada }: { cancelada: boolean }) {
-  return <EstadoVazio titulo={cancelada ? 'Venda cancelada sem estorno' : 'Venda não cancelada'}>{cancelada ? 'O cancelamento não se encaixa nas regras de estorno, quem vendeu não devolve, ou falta algo (veja acima).' : 'Estorno só existe quando a venda cai.'}</EstadoVazio>;
+  return <EstadoVazio titulo={cancelada ? 'Venda cancelada sem estorno' : 'Venda não cancelada'}>{cancelada ? 'O estorno só é cobrado depois que o cancelamento aparece num relatório de comissão (CV056E ou CV069E). Se já apareceu: o cancelamento não se encaixa nas regras de estorno, quem vendeu não devolve (ou está desligado), ou falta algo (veja acima).' : 'Estorno só existe quando a venda cai.'}</EstadoVazio>;
 }

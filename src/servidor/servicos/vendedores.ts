@@ -293,6 +293,7 @@ export async function desligarVendedor(s: Sessao, d: z.infer<typeof esquemaDesli
     const depois = await tx.vendedor.update({ where: { id: v.id }, data: { status: 'DESLIGADO', desligadoEm: d.data } });
     await auditar(tx, { sessao: s, acao: 'DESATIVACAO', entidade: 'Vendedor', entidadeId: v.id, antes: v, depois, contexto: { motivo: d.motivo } });
     await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'documento desligado');
+    await recalcularVendasDoDocumento(tx, v.id, 'documento desligado: não recebe mais comissão nem paga estorno');
   }, { timeout: 60_000 });
 }
 
@@ -304,7 +305,14 @@ export async function reativarVendedor(s: Sessao, d: z.infer<typeof esquemaReati
     const depois = await tx.vendedor.update({ where: { id: v.id }, data: { status: 'ATIVO', desligadoEm: null } });
     await auditar(tx, { sessao: s, acao: 'REATIVACAO', entidade: 'Vendedor', entidadeId: v.id, antes: v, depois, contexto: { motivo: d.motivo } });
     await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'documento reativado');
+    await recalcularVendasDoDocumento(tx, v.id, 'documento reativado');
   }, { timeout: 60_000 });
+}
+
+/** Manda recalcular as vendas em que o documento recebe (como vendedor ou como Expert). */
+async function recalcularVendasDoDocumento(tx: Tx, vendedorId: string, motivo: string) {
+  const cotas = await tx.cota.findMany({ where: { OR: [{ snapVendedorId: vendedorId }, { snapExpertVendedorId: vendedorId }] }, select: { id: true } });
+  for (const c of cotas) await enfileirarApuracao(tx, c.id, motivo);
 }
 
 /**

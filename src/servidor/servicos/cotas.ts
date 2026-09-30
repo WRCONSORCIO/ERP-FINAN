@@ -122,7 +122,7 @@ export async function resolverDivergencia(s: Sessao, d: z.infer<typeof esquemaDi
 }
 
 export const esquemaConferencia = z.object({
-  cotaId: zId, parcela: z.coerce.number().int().min(1).max(999), decisao: z.enum(['PAGAR', 'NAO_PAGAR']), motivo: zMotivo,
+  cotaId: zId, parcela: z.coerce.number().int().min(1).max(999), decisao: z.enum(['PAGAR', 'NAO_PAGAR', 'AGUARDAR']), motivo: zMotivo,
 });
 
 /**
@@ -132,16 +132,17 @@ export const esquemaConferencia = z.object({
 export async function decidirConferencia(s: Sessao, d: z.infer<typeof esquemaConferencia>) {
   exigir(s, 'comissoes', 'editar');
   return prisma.$transaction(async (tx) => {
-    const cota = await tx.cota.findFirst({ where: { AND: [{ id: d.cotaId }, escopoCotas(s)] }, select: { id: true, snapParcelasConferencia: true } });
+    const cota = await tx.cota.findFirst({ where: { AND: [{ id: d.cotaId }, escopoCotas(s)] }, select: { id: true, snapParcelasConferencia: true, parcelasPagas: true, parcelasAntecipadas: true } });
     if (!cota) throw new ErroNaoEncontrado('Venda não encontrada.');
     if (!cota.snapParcelasConferencia.includes(d.parcela)) throw new ErroDeDominio(`A ${d.parcela}ª parcela desta venda não exige conferência.`);
     const fechada = await tx.comissaoApurada.findFirst({ where: { cotaId: d.cotaId, destino: 'VENDEDOR', parcela: d.parcela, status: { in: ['EM_FOLHA', 'PAGA'] } } });
     if (fechada) throw new ErroDeDominio(`A ${d.parcela}ª parcela já está em folha fechada: a decisão não pode mais mudar.`);
     const antes = await tx.conferenciaParcela.findUnique({ where: { cotaId_parcela: { cotaId: d.cotaId, parcela: d.parcela } } });
+    const parcelasNaDecisao = d.decisao === 'AGUARDAR' ? cota.parcelasPagas - cota.parcelasAntecipadas : null;
     const r = await tx.conferenciaParcela.upsert({
       where: { cotaId_parcela: { cotaId: d.cotaId, parcela: d.parcela } },
-      create: { cotaId: d.cotaId, parcela: d.parcela, decisao: d.decisao, motivo: d.motivo, decididoPorId: s.usuarioId },
-      update: { decisao: d.decisao, motivo: d.motivo, decididoPorId: s.usuarioId, decididoEm: new Date() },
+      create: { cotaId: d.cotaId, parcela: d.parcela, decisao: d.decisao, motivo: d.motivo, decididoPorId: s.usuarioId, parcelasNaDecisao },
+      update: { decisao: d.decisao, motivo: d.motivo, decididoPorId: s.usuarioId, decididoEm: new Date(), parcelasNaDecisao },
     });
     await auditar(tx, {
       sessao: s, acao: antes ? 'ALTERACAO' : 'CRIACAO', entidade: 'ConferenciaParcela', entidadeId: r.id,

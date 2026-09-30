@@ -77,7 +77,7 @@ export async function conferenciasPendentes(s: Sessao) {
     include: {
       cota: {
         select: {
-          id: true, clienteNome: true, grupo: true, cota: true, credito: true, dataVenda: true, parcelasPagas: true,
+          id: true, clienteNome: true, grupo: true, cota: true, credito: true, dataVenda: true, parcelasPagas: true, parcelasAntecipadas: true,
           snapVendedor: { select: { nome: true } }, snapCategoria: { select: { nome: true } },
           comissoes: { where: { destino: 'VENDEDOR', status: 'PREVISTA' }, select: { parcela: true, valor: true } },
         },

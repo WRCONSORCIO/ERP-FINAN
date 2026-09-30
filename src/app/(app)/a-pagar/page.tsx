@@ -61,9 +61,9 @@ export default async function APagar({ searchParams }: { searchParams: Promise<P
                     <td className="numero">{c.cota.grupo}/{c.cota.cota}</td>
                     <td>{c.cota.snapVendedor?.nome ?? '—'}{c.cota.snapCategoria ? <span className="block text-[11px] text-wr-texto-3">{c.cota.snapCategoria.nome}</span> : null}</td>
                     <td className="direita numero">{c.parcela}ª</td>
-                    <td className="direita numero">{c.cota.parcelasPagas}</td>
+                    <td className="direita numero">{c.cota.parcelasPagas}{c.cota.parcelasAntecipadas ? <span className="block text-[11px] text-wr-texto-3">{c.cota.parcelasAntecipadas} antecipada(s)</span> : null}</td>
                     <td className="direita">{c.valor ? <Dinheiro valor={c.valor} /> : '—'}</td>
-                    {podeEditar ? <td className="min-w-[440px]"><DecidirConferencia cotaId={c.cota.id} parcela={c.parcela} /></td> : null}
+                    {podeEditar ? <td className="min-w-[640px]"><DecidirConferencia cotaId={c.cota.id} parcela={c.parcela} /></td> : null}
                   </tr>
                 ))}
               </tbody>

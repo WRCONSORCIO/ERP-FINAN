@@ -91,6 +91,27 @@ describe('2ª parcela do Iniciante: a WR não recebe, então pagar o vendedor ex
     expect((await doVendedor('2', 2)).filter((c) => c.status !== 'CANCELADA').map((c) => c.status)).toEqual(['LIBERADA']);
   });
 
+  it('antecipação não conta para a 2ª parcela; "ainda não pagou" tira da lista até o cliente pagar mais uma', async () => {
+    const { admin, administradoraId, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    await vendedor(admin, { nome: 'Gabriel', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
+    // 2 pagas, sendo 1 antecipação (parcela 220): em sequência só a 1ª → não pede conferência da 2ª.
+    await importar(admin, administradoraId, csv([{ ...linha('1', 2), antecipadas: 1 }, linha('2', 2)]));
+    expect((await prisma.cota.findFirstOrThrow({ where: { cota: '1' } })).parcelasAntecipadas).toBe(1);
+    expect((await conferenciasPendentes(admin)).map((p) => p.cota.cota)).toEqual(['2']);
+
+    // "Ainda não pagou": sai da lista; a mesma base de novo não traz de volta; mais uma parcela paga traz.
+    const c2 = await prisma.cota.findFirstOrThrow({ where: { cota: '2' } });
+    await decidirConferencia(admin, { cotaId: c2.id, parcela: 2, decisao: 'AGUARDAR', motivo: 'foi antecipação' });
+    await apurarTudo();
+    expect(await conferenciasPendentes(admin)).toHaveLength(0);
+    expect((await doVendedor('2', 2)).map((c) => c.status)).toEqual(['PREVISTA']);
+    await importar(admin, administradoraId, csv([{ ...linha('1', 2), antecipadas: 1 }, { ...linha('2', 2), cliente: 'MESMA BASE' }]));
+    expect(await conferenciasPendentes(admin)).toHaveLength(0);
+    await importar(admin, administradoraId, csv([{ ...linha('1', 2), antecipadas: 1 }, linha('2', 3)]));
+    expect((await conferenciasPendentes(admin)).map((p) => p.cota.cota)).toEqual(['2']);
+  });
+
   it('Veterano e categorias sem a regra não são afetados', async () => {
     const { admin, administradoraId, cat } = await preparar();
     const est = await estrutura(admin, 'A');

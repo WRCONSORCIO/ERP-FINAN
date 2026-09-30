@@ -235,7 +235,7 @@ async function aplicarLinhaCarteira(tx: Tx, imp: Importacao, d: LinhaCarteira, c
     const cota = await tx.cota.create({
       data: {
         ...identidade, clienteNome: d.clienteNome, clienteEmail: d.clienteEmail, clienteTelefone: d.clienteTelefone,
-        credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, situacao: d.situacao, cancelada: d.cancelada,
+        credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, parcelasAntecipadas: d.parcelasAntecipadas ?? 0, situacao: d.situacao, cancelada: d.cancelada,
         dataCancelamento, origemDataCancelamento: d.cancelada ? (dataCancArquivo ? 'base de clientes' : `data da importação que registrou o cancelamento (${formatarData(hojeData)})`) : null,
         segmentoTexto: d.segmento, flexTexto: d.flex, vendedorNomeImportado: d.vendedorNome, vendedorDocImportado: d.vendedorDocumento,
         hashConteudo: hash, vendedorId: casamento.vendedorId, ...snap, snapCongeladoEm: new Date(), snapOrigem: 'IMPORTACAO',
@@ -251,7 +251,7 @@ async function aplicarLinhaCarteira(tx: Tx, imp: Importacao, d: LinhaCarteira, c
 
   const dados: Prisma.CotaUncheckedUpdateInput = {
     clienteNome: d.clienteNome, clienteEmail: existente.anonimizadaEm ? null : d.clienteEmail, clienteTelefone: existente.anonimizadaEm ? null : d.clienteTelefone,
-    credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, situacao: d.situacao, cancelada: d.cancelada,
+    credito: d.credito, dataVenda, parcelasPagas: d.parcelasPagas, parcelasAntecipadas: d.parcelasAntecipadas ?? 0, situacao: d.situacao, cancelada: d.cancelada,
     segmentoTexto: d.segmento, flexTexto: d.flex, vendedorNomeImportado: d.vendedorNome, vendedorDocImportado: d.vendedorDocumento,
     hashConteudo: hash, ultimaImportacaoId: imp.id,
   };

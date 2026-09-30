@@ -16,6 +16,8 @@ export interface LinhaCarteira {
   credito: string;
   dataVenda: string; // ISO
   parcelasPagas: number;
+  /** Das parcelas pagas, quantas foram antecipação (últimas parcelas da cota). */
+  parcelasAntecipadas: number;
   situacao: string;
   cancelada: boolean;
   dataCancelamento: string | null;
@@ -124,6 +126,7 @@ export function lerCarteira(conteudo: string, layout: LayoutCarteira): Resultado
       dados: {
         grupo, cota, contrato: contrato.replace(/\s+/g, ''), cpfCliente: cpf, clienteNome: clienteNome.replace(/\s+/g, ' '),
         credito: paraTexto(credito.toDecimalPlaces(2)), dataVenda: paraISO(dataVenda), parcelasPagas: Number(parcTexto),
+        parcelasAntecipadas: Math.min(Number(/^\d{1,4}$/.exec(texto(campos, mapa.parcelasAntecipadas) ?? '')?.[0] ?? 0), Number(parcTexto)),
         situacao, cancelada, dataCancelamento: dataCancelamento ? paraISO(dataCancelamento) : null,
         vendedorNome: texto(campos, mapa.vendedorNome), vendedorDocumento: vendedorDocumento === '' ? null : vendedorDocumento,
         segmento: texto(campos, mapa.segmento), flex: textoFlex(texto(campos, mapa.flex)),
@@ -148,6 +151,6 @@ export function hashLinhaCarteira(d: LinhaCarteira): string {
     d.grupo, d.cota, d.contrato, d.cpfCliente, d.clienteNome, d.credito, d.dataVenda, d.parcelasPagas, d.situacao,
     d.dataCancelamento ?? '', d.vendedorNome ?? '', d.vendedorDocumento ?? '', d.segmento ?? '', d.flex ?? '',
     d.clienteEmail ?? '', d.clienteTelefone ?? '',
-  ].join('|');
+  ].join('|') + (d.parcelasAntecipadas ? `|antecipadas:${d.parcelasAntecipadas}` : ''); // sem antecipação, o hash antigo não muda
   return createHash('sha256').update(chave).digest('hex');
 }

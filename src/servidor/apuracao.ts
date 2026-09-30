@@ -199,7 +199,9 @@ async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaC
   const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set(), canceladaNaoPaga: new Set(), pagarEm: new Map() };
   if (cota.snapParcelasConferencia.length === 0) return r;
   const registros = await tx.conferenciaParcela.findMany({ where: { cotaId: cota.id } });
-  const decisoes = new Map(registros.map((c) => [c.parcela, c.decisao]));
+  const emSequencia = cota.parcelasPagas - cota.parcelasAntecipadas;
+  // "Ainda não pagou — perguntar de novo": vale até o cliente pagar mais uma parcela em sequência; aí volta à lista.
+  const decisoes = new Map(registros.map((c) => [c.parcela, c.decisao === 'AGUARDAR' && emSequencia > (c.parcelasNaDecisao ?? 0) ? null : c.decisao]));
   for (const c of registros) if (c.decisao === 'PAGAR') r.pagarEm.set(c.parcela, c.decididoEm);
   r.desejadas = desejadas.filter((l) => {
     if (l.destino !== 'VENDEDOR' || !cota.snapParcelasConferencia.includes(l.parcela)) return true;
@@ -208,7 +210,7 @@ async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaC
     // Regra da WR: venda cancelada não paga mais nada ao vendedor. A parcela que exigiria conferência (a WR não a
     // recebe) não vai para a lista: sai como não paga, salvo decisão manual explícita de pagar.
     if (cota.cancelada && decisao !== 'PAGAR') { r.canceladaNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
-    if (decisao !== 'PAGAR') r.aguardando.add(`VENDEDOR|${l.parcela}`);
+    if (decisao !== 'PAGAR' && decisao !== 'AGUARDAR') r.aguardando.add(`VENDEDOR|${l.parcela}`);
     return true;
   });
   return r;
@@ -276,7 +278,8 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
   for (const d of desejadas) d.liberada = liberacao(d.destino, d.parcela, d.pagaPelaWr, d.titular.vendedorId) !== null;
 
   const segurar = (destino: string, parcela: number) => {
-    if (!conferencia.aguardando.has(`${destino}|${parcela}`) || parcela > cota.parcelasPagas) return false;
+    // Só as parcelas pagas em sequência contam: antecipação é das últimas parcelas da cota, não da 2ª.
+    if (!conferencia.aguardando.has(`${destino}|${parcela}`) || parcela > cota.parcelasPagas - cota.parcelasAntecipadas) return false;
     pendencias.push({
       tipo: 'CONFERENCIA_PARCELA', destino: destino as Destino,
       descricao: `${parcela}ª parcela paga pelo cliente: a WR não recebe esta parcela da administradora. Confira e marque se paga o vendedor.`,

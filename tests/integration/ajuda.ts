@@ -45,17 +45,17 @@ export async function vendedor(admin: Sessao, p: { nome: string; tipo: 'CPF' | '
   return r.vendedor;
 }
 
-export const CABECALHO = 'NOME;CPF;GRUPO;COTA;CONTRATO;VALOR DO CRÉDITO;DATA DA VENDA;PARCELAS PAGAS;SITUAÇÃO;VENDEDOR;CPF VENDEDOR;SEGMENTO;MODALIDADE;DATA CANCELAMENTO';
+export const CABECALHO = 'NOME;CPF;GRUPO;COTA;CONTRATO;VALOR DO CRÉDITO;DATA DA VENDA;PARCELAS PAGAS;SITUAÇÃO;VENDEDOR;CPF VENDEDOR;SEGMENTO;MODALIDADE;DATA CANCELAMENTO;PARCELAS ANTECIPADAS';
 
 export interface LinhaTeste {
   cliente?: string; cpf?: string; grupo: string; cota: string; contrato?: string; credito: string; venda: string; pagas: number;
-  situacao?: string; vendedor?: string; docVendedor?: string; segmento?: string; flex?: string; cancelamento?: string;
+  situacao?: string; vendedor?: string; docVendedor?: string; segmento?: string; flex?: string; cancelamento?: string; antecipadas?: number;
 }
 
 export function csv(linhas: LinhaTeste[]): Uint8Array {
   const corpo = linhas.map((l) => [
     l.cliente ?? `CLIENTE ${l.grupo}/${l.cota}`, l.cpf ?? '52998224725', l.grupo, l.cota, l.contrato ?? `C${l.grupo}${l.cota}`, l.credito, l.venda, String(l.pagas),
-    l.situacao ?? 'ATIVO', l.vendedor ?? '', l.docVendedor ?? '', l.segmento ?? 'IMÓVEL', l.flex ?? 'FLEX 50', l.cancelamento ?? '',
+    l.situacao ?? 'ATIVO', l.vendedor ?? '', l.docVendedor ?? '', l.segmento ?? 'IMÓVEL', l.flex ?? 'FLEX 50', l.cancelamento ?? '', String(l.antecipadas ?? 0),
   ].join(';'));
   return new Uint8Array(Buffer.from([CABECALHO, ...corpo].join('\r\n') + '\r\n', 'latin1'));
 }

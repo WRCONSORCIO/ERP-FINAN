@@ -111,13 +111,13 @@ export default async function FichaCota({ params }: { params: Promise<{ id: stri
           <ul className="space-y-3">
             {cota.snapParcelasConferencia.map((parcela) => {
               const c = cota.conferencias.find((x) => x.parcela === parcela);
-              const pagou = cota.parcelasPagas >= parcela;
+              const pagou = cota.parcelasPagas - cota.parcelasAntecipadas >= parcela;
               return (
                 <li key={parcela} className="text-[13px]">
                   <p>
                     <strong>{parcela}ª parcela:</strong>{' '}
                     {c ? (
-                      <><Etiqueta tom={c.decisao === 'PAGAR' ? 'verde' : 'vermelho'}>{c.decisao === 'PAGAR' ? 'pagar ao vendedor' : 'não pagar'}</Etiqueta> · {c.decididoPor.nome} em {formatarDataHora(c.decididoEm)} · “{c.motivo}”</>
+                      <><Etiqueta tom={c.decisao === 'PAGAR' ? 'verde' : c.decisao === 'AGUARDAR' ? 'ambar' : 'vermelho'}>{c.decisao === 'PAGAR' ? 'pagar ao vendedor' : c.decisao === 'AGUARDAR' ? `aguardando o cliente pagar (tinha ${c.parcelasNaDecisao ?? 0} em sequência)` : 'não pagar'}</Etiqueta> · {c.decididoPor.nome} em {formatarDataHora(c.decididoEm)} · “{c.motivo}”</>
                     ) : pagou ? <Etiqueta tom="ambar">cliente pagou — aguardando conferência</Etiqueta> : <span className="text-wr-texto-2">o cliente ainda não pagou</span>}
                   </p>
                   {podeConferir && pagou ? <div className="mt-2"><DecidirConferencia cotaId={cota.id} parcela={parcela} /></div> : null}

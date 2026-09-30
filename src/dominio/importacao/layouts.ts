@@ -6,7 +6,7 @@
 
 export const CAMPOS_CARTEIRA = [
   'grupo', 'cota', 'grupoCota', 'contrato', 'cpfCliente', 'clienteNome', 'credito', 'dataVenda', 'parcelasPagas',
-  'situacao', 'vendedorNome', 'vendedorDocumento', 'segmento', 'flex', 'dataCancelamento', 'clienteEmail', 'clienteTelefone',
+  'situacao', 'vendedorNome', 'vendedorDocumento', 'segmento', 'flex', 'dataCancelamento', 'clienteEmail', 'clienteTelefone', 'parcelasAntecipadas',
 ] as const;
 export type CampoCarteira = (typeof CAMPOS_CARTEIRA)[number];
 
@@ -43,6 +43,8 @@ export const LAYOUT_CARTEIRA_INICIAL: LayoutCarteira = {
     dataCancelamento: ['DATA CANCELAMENTO', 'DT CANCELAMENTO', 'DATA CANC', 'DATA DO CANCELAMENTO'],
     clienteEmail: ['EMAIL', 'E MAIL', 'EMAIL CLIENTE', 'NM EMAIL CONSORCIADO'],
     clienteTelefone: ['TELEFONE', 'FONE', 'CELULAR', 'TELEFONE CLIENTE', 'CD CEL CONSORCIADO'],
+    // Parcelas pagas por antecipação (o cliente paga as ÚLTIMAS parcelas): não contam como parcela da sequência.
+    parcelasAntecipadas: ['PARCELAS ANTECIPADAS', 'QT PARCELAS ANTECIPADAS', 'QTD PARCELAS ANTECIPADAS'],
   },
   // ESTORNADO (Servopa) = venda desfeita, vem com data de cancelamento.
   situacoesCanceladas: ['CANCEL', 'ESTORN'],

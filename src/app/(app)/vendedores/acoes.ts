@@ -106,3 +106,11 @@ export async function previaCadastroLoteAcao(fd: FormData): Promise<Resultado<Pr
 export async function executarCadastroLoteAcao(itens: unknown): Promise<Resultado<ResultadoItemLote[]>> {
   return executar('vendedores', 'editar', esquemaExecutarLote, { itens }, async (s, d) => ({ mensagem: 'ok', dados: await executarCadastroLote(s, d) }));
 }
+
+export async function corrigirEquipeAcao(_: Estado, fd: FormData) {
+  return executar('vendedores', 'editar', V.esquemaCorrigirEquipe, formParaObjeto(fd), async (s, d) => {
+    const r = await V.corrigirEquipe(s, d);
+    await processarFila(100);
+    return { mensagem: `Equipe do período corrigida. ${r.vendas} venda(s) do período; ${r.recalculadas} recalculada(s) com o supervisor e o gerente certos.` };
+  });
+}

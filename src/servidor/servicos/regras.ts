@@ -30,6 +30,7 @@ export const esquemaCategoria = z.object({
   geraSupervisao: zBooleano,
   geraGerencia: zBooleano,
   contaParaPromocao: zBooleano,
+  recebeSobreOutrosDocumentos: zBooleano,
 });
 export const esquemaEditarCategoria = esquemaCategoria.omit({ codigo: true }).extend({ id: zId, motivo: zMotivo });
 export const esquemaAtivoCategoria = z.object({ id: zId, ativo: zBooleano });
@@ -225,7 +226,7 @@ export async function abrirVigenciaTabela(s: Sessao, d: EntradaTabela) {
       contexto: { destino: d.destino, segmentoId: d.segmentoId, categoriaId: d.categoriaId, excecao: Boolean(d.titularVendedorId || d.titularPessoaId) },
     });
     // Vendas pendentes por falta desta tabela passam a ser apuráveis.
-    const pend = await tx.pendencia.findMany({ where: { tipo: 'SEM_TABELA', resolvidaEm: null, destino: d.destino, cotaId: { not: null } }, select: { cotaId: true } });
+    const pend = await tx.pendencia.findMany({ where: { tipo: 'SEM_TABELA', resolvidaEm: null, destino: d.destino === 'VENDEDOR' ? { in: ['VENDEDOR', 'EXPERT'] } : d.destino, cotaId: { not: null } }, select: { cotaId: true } });
     for (const p of pend) await enfileirarApuracao(tx, p.cotaId as string, 'nova tabela de comissão');
     return nova;
   });

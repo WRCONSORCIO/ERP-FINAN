@@ -54,6 +54,8 @@ enum DestinoComissao {
   VENDEDOR
   SUPERVISAO
   GERENCIA
+  // CNPJ de categoria que recebe sobre as vendas dos outros CNPJ da mesma pessoa (ex.: Expert sobre o Veterano).
+  EXPERT
 }
 
 enum StatusComissao {
@@ -218,34 +220,34 @@ enum StatusSolicitacaoTitular {
 // ============================================================
 
 model Usuario {
-  id            String    @id @default(cuid())
-  nome          String
-  email         String    @unique
-  senhaHash     String
-  perfil        Perfil
-  gerenciaId    String?
-  equipeId      String?
-  ativo         Boolean   @default(true)
+  id           String    @id @default(cuid())
+  nome         String
+  email        String    @unique
+  senhaHash    String
+  perfil       Perfil
+  gerenciaId   String?
+  equipeId     String?
+  ativo        Boolean   @default(true)
   // Incrementado a cada troca de senha/perfil/escopo/desativação: invalida sessões antigas.
-  versaoSessao  Int       @default(1)
-  ultimoAcesso  DateTime?
-  criadoEm      DateTime  @default(now())
-  atualizadoEm  DateTime  @updatedAt
+  versaoSessao Int       @default(1)
+  ultimoAcesso DateTime?
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
 
-  gerencia      Gerencia? @relation(fields: [gerenciaId], references: [id])
-  equipe        Equipe?   @relation(fields: [equipeId], references: [id])
-  auditorias    AuditLog[]
-  notificacoes  Notificacao[]
+  gerencia     Gerencia?     @relation(fields: [gerenciaId], references: [id])
+  equipe       Equipe?       @relation(fields: [equipeId], references: [id])
+  auditorias   AuditLog[]
+  notificacoes Notificacao[]
 
   @@map("usuario")
 }
 
 model LoginTentativa {
-  id        BigInt   @id @default(autoincrement())
-  email     String
-  ip        String
-  sucesso   Boolean
-  criadoEm  DateTime @default(now())
+  id       BigInt   @id @default(autoincrement())
+  email    String
+  ip       String
+  sucesso  Boolean
+  criadoEm DateTime @default(now())
 
   @@index([email, criadoEm])
   @@index([ip, criadoEm])
@@ -253,29 +255,29 @@ model LoginTentativa {
 }
 
 model Administradora {
-  id        String   @id @default(cuid())
-  codigo    String   @unique
-  nome      String
-  cnpj      String?  @unique
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now())
+  id       String   @id @default(cuid())
+  codigo   String   @unique
+  nome     String
+  cnpj     String?  @unique
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now())
 
-  cotas     Cota[]
+  cotas       Cota[]
   importacoes Importacao[]
 
   @@map("administradora")
 }
 
 model Gerencia {
-  id        String        @id @default(cuid())
-  nome      String        @unique
-  status    StatusUnidade @default(ATIVO)
-  criadoEm  DateTime      @default(now())
+  id       String        @id @default(cuid())
+  nome     String        @unique
+  status   StatusUnidade @default(ATIVO)
+  criadoEm DateTime      @default(now())
 
   equipes       Equipe[]
   responsaveis  ResponsavelUnidade[]
   usuarios      Usuario[]
-  cotasSnapshot Cota[]            @relation("SnapGerencia")
+  cotasSnapshot Cota[]               @relation("SnapGerencia")
   bonus         BonusIncentivo[]
 
   @@map("gerencia")
@@ -319,16 +321,16 @@ model ResponsavelUnidade {
 }
 
 model Pessoa {
-  id               String   @id @default(cuid())
-  nome             String
-  nomeNormalizado  String
-  criadoEm         DateTime @default(now())
+  id              String   @id @default(cuid())
+  nome            String
+  nomeNormalizado String
+  criadoEm        DateTime @default(now())
 
-  documentos       Vendedor[]
-  vinculos         PessoaVinculo[]
+  documentos        Vendedor[]
+  vinculos          PessoaVinculo[]
   responsabilidades ResponsavelUnidade[]
-  comissoes        ComissaoApurada[]
-  estornos         Estorno[]
+  comissoes         ComissaoApurada[]
+  estornos          Estorno[]
 
   @@index([nomeNormalizado])
   @@map("pessoa")
@@ -336,15 +338,15 @@ model Pessoa {
 
 // O DOCUMENTO que vende. Carrega categoria, alocação e exceções próprias.
 model Vendedor {
-  id               String         @id @default(cuid())
-  pessoaId         String
-  tipoDocumento    TipoDocumento
-  documento        String         @unique // somente dígitos
-  nome             String
-  nomeNormalizado  String
-  status           StatusVendedor @default(ATIVO)
-  desligadoEm      DateTime?      @db.Date
-  criadoEm         DateTime       @default(now())
+  id              String         @id @default(cuid())
+  pessoaId        String
+  tipoDocumento   TipoDocumento
+  documento       String         @unique // somente dígitos
+  nome            String
+  nomeNormalizado String
+  status          StatusVendedor @default(ATIVO)
+  desligadoEm     DateTime?      @db.Date
+  criadoEm        DateTime       @default(now())
 
   pessoa           Pessoa               @relation(fields: [pessoaId], references: [id])
   categorias       VendedorCategoria[]
@@ -353,6 +355,7 @@ model Vendedor {
   vinculos         PessoaVinculo[]
   cotasAtuais      Cota[]               @relation("VendedorAtual")
   cotasSnapshot    Cota[]               @relation("SnapVendedor")
+  cotasExpert      Cota[]               @relation("SnapExpert")
   excecoesComissao TabelaComissao[]
   excecoesEstorno  RegraEstorno[]
   comissoes        ComissaoApurada[]
@@ -395,24 +398,28 @@ model PessoaVinculo {
 }
 
 model CategoriaVendedor {
-  id                String          @id @default(cuid())
-  codigo            String          @unique // imutável (trigger)
-  nome              String
-  descricao         String?
-  ordem             Int             // degrau na escada de promoção
-  documentosAceitos TipoDocumento[]
-  pagaPelaWr        Boolean
-  geraSupervisao    Boolean
-  geraGerencia      Boolean
-  contaParaPromocao Boolean
-  ativo             Boolean         @default(true)
-  criadoEm          DateTime        @default(now())
+  id                          String          @id @default(cuid())
+  codigo                      String          @unique // imutável (trigger)
+  nome                        String
+  descricao                   String?
+  ordem                       Int // degrau na escada de promoção
+  documentosAceitos           TipoDocumento[]
+  pagaPelaWr                  Boolean
+  geraSupervisao              Boolean
+  geraGerencia                Boolean
+  contaParaPromocao           Boolean
+  // Documento desta categoria recebe também sobre as vendas dos outros CNPJ da mesma pessoa
+  // (regra da WR: o CNPJ Expert não vende; recebe o % do Expert sobre as vendas do CNPJ Veterano).
+  recebeSobreOutrosDocumentos Boolean         @default(false)
+  ativo                       Boolean         @default(true)
+  criadoEm                    DateTime        @default(now())
 
-  vigencias      VendedorCategoria[]
-  tabelas        TabelaComissao[]
-  cotasSnapshot  Cota[]             @relation("SnapCategoria")
-  metasOrigem    MetaPromocao[]     @relation("MetaOrigem")
-  metasAlvo      MetaPromocao[]     @relation("MetaAlvo")
+  vigencias     VendedorCategoria[]
+  tabelas       TabelaComissao[]
+  cotasSnapshot Cota[]              @relation("SnapCategoria")
+  cotasExpert   Cota[]              @relation("SnapExpertCategoria")
+  metasOrigem   MetaPromocao[]      @relation("MetaOrigem")
+  metasAlvo     MetaPromocao[]      @relation("MetaAlvo")
 
   @@map("categoria_vendedor")
 }
@@ -454,16 +461,16 @@ model VendedorAlocacao {
 }
 
 model PeriodoRecuperacao {
-  id            String    @id @default(cuid())
-  vendedorId    String
-  inicio        DateTime  @db.Date
-  fim           DateTime? @db.Date
-  motivo        String?
-  canceladoEm   DateTime?
-  canceladoPorId String?
+  id                 String    @id @default(cuid())
+  vendedorId         String
+  inicio             DateTime  @db.Date
+  fim                DateTime? @db.Date
+  motivo             String?
+  canceladoEm        DateTime?
+  canceladoPorId     String?
   motivoCancelamento String?
-  criadoPorId   String?
-  criadoEm      DateTime  @default(now())
+  criadoPorId        String?
+  criadoEm           DateTime  @default(now())
 
   vendedor Vendedor @relation(fields: [vendedorId], references: [id])
 
@@ -472,15 +479,15 @@ model PeriodoRecuperacao {
 }
 
 model Segmento {
-  id       String   @id @default(cuid())
-  codigo   String   @unique
-  nome     String
+  id      String   @id @default(cuid())
+  codigo  String   @unique
+  nome    String
   // Textos da base de clientes que identificam o segmento (normalizados).
-  aliases  String[]
-  ativo    Boolean  @default(true)
+  aliases String[]
+  ativo   Boolean  @default(true)
 
-  tabelas  TabelaComissao[]
-  cotas    Cota[]   @relation("SnapSegmento")
+  tabelas TabelaComissao[]
+  cotas   Cota[]           @relation("SnapSegmento")
 
   @@map("segmento")
 }
@@ -490,74 +497,80 @@ model Segmento {
 // ============================================================
 
 model Cota {
-  id                String    @id @default(cuid())
-  administradoraId  String
-  contrato          String
-  grupo             String
-  cota              String
-  cpfCliente        String    // somente dígitos
+  id               String @id @default(cuid())
+  administradoraId String
+  contrato         String
+  grupo            String
+  cota             String
+  cpfCliente       String // somente dígitos
 
-  clienteNome       String
-  clienteEmail      String?
-  clienteTelefone   String?
-  credito           Decimal   @db.Decimal(18, 2)
-  dataVenda         DateTime  @db.Date
-  parcelasPagas     Int
-  situacao          String    // texto exato enviado pela administradora
-  cancelada         Boolean   @default(false)
-  dataCancelamento  DateTime? @db.Date
+  clienteNome            String
+  clienteEmail           String?
+  clienteTelefone        String?
+  credito                Decimal   @db.Decimal(18, 2)
+  dataVenda              DateTime  @db.Date
+  parcelasPagas          Int
+  situacao               String // texto exato enviado pela administradora
+  cancelada              Boolean   @default(false)
+  dataCancelamento       DateTime? @db.Date
   origemDataCancelamento String?
-  segmentoTexto     String?
-  flexTexto         String?
-  vendedorNomeImportado String?
-  vendedorDocImportado  String?
-  hashConteudo      String
-  anonimizadaEm     DateTime?
+  segmentoTexto          String?
+  flexTexto              String?
+  vendedorNomeImportado  String?
+  vendedorDocImportado   String?
+  hashConteudo           String
+  anonimizadaEm          DateTime?
 
   // Responsável atual pela venda (muda só por transferência registrada).
-  vendedorId        String?
+  vendedorId String?
 
   // ---- SNAPSHOT congelado na entrada (6.3) ----
-  snapVendedorId        String?
-  snapCategoriaId       String?
-  snapSegmentoId        String?
-  snapModalidadeFlexId  String?
-  snapEquipeId          String?
-  snapGerenciaId        String?
+  snapVendedorId         String?
+  snapCategoriaId        String?
+  snapSegmentoId         String?
+  snapModalidadeFlexId   String?
+  snapEquipeId           String?
+  snapGerenciaId         String?
   snapSupervisorPessoaId String?
-  snapGerentePessoaId   String?
-  snapRecuperacao       Boolean   @default(false)
+  snapGerentePessoaId    String?
+  snapRecuperacao        Boolean   @default(false)
   // Comportamento da categoria congelado com ela: editar a categoria muda só o futuro.
-  snapPagaPelaWr        Boolean?
-  snapGeraSupervisao    Boolean?
-  snapGeraGerencia      Boolean?
-  snapCongeladoEm       DateTime?
-  snapOrigem            String?   // IMPORTACAO | TRANSFERENCIA | RECONGELAMENTO
+  snapPagaPelaWr         Boolean?
+  snapGeraSupervisao     Boolean?
+  snapGeraGerencia       Boolean?
+  // CNPJ da mesma pessoa que recebe sobre esta venda (Expert sobre o Veterano), congelado na data da venda.
+  snapExpertVendedorId   String?
+  snapExpertCategoriaId  String?
+  snapExpertPagaPelaWr   Boolean?
+  snapCongeladoEm        DateTime?
+  snapOrigem             String? // IMPORTACAO | TRANSFERENCIA | RECONGELAMENTO
 
-  primeiraImportacaoId  String?
-  ultimaImportacaoId    String?
-  criadoEm          DateTime  @default(now())
-  atualizadoEm      DateTime  @updatedAt
+  primeiraImportacaoId String?
+  ultimaImportacaoId   String?
+  criadoEm             DateTime @default(now())
+  atualizadoEm         DateTime @updatedAt
 
-  administradora    Administradora     @relation(fields: [administradoraId], references: [id])
-  vendedor          Vendedor?          @relation("VendedorAtual", fields: [vendedorId], references: [id])
-  snapVendedor      Vendedor?          @relation("SnapVendedor", fields: [snapVendedorId], references: [id])
-  snapCategoria     CategoriaVendedor? @relation("SnapCategoria", fields: [snapCategoriaId], references: [id])
-  snapSegmento      Segmento?          @relation("SnapSegmento", fields: [snapSegmentoId], references: [id])
-  snapModalidadeFlex ModalidadeFlex?   @relation("SnapFlex", fields: [snapModalidadeFlexId], references: [id])
-  snapEquipe        Equipe?            @relation("SnapEquipe", fields: [snapEquipeId], references: [id])
-  snapGerencia      Gerencia?          @relation("SnapGerencia", fields: [snapGerenciaId], references: [id])
+  administradora      Administradora     @relation(fields: [administradoraId], references: [id])
+  vendedor            Vendedor?          @relation("VendedorAtual", fields: [vendedorId], references: [id])
+  snapVendedor        Vendedor?          @relation("SnapVendedor", fields: [snapVendedorId], references: [id])
+  snapCategoria       CategoriaVendedor? @relation("SnapCategoria", fields: [snapCategoriaId], references: [id])
+  snapExpertVendedor  Vendedor?          @relation("SnapExpert", fields: [snapExpertVendedorId], references: [id])
+  snapExpertCategoria CategoriaVendedor? @relation("SnapExpertCategoria", fields: [snapExpertCategoriaId], references: [id])
+  snapSegmento        Segmento?          @relation("SnapSegmento", fields: [snapSegmentoId], references: [id])
+  snapModalidadeFlex  ModalidadeFlex?    @relation("SnapFlex", fields: [snapModalidadeFlexId], references: [id])
+  snapEquipe          Equipe?            @relation("SnapEquipe", fields: [snapEquipeId], references: [id])
+  snapGerencia        Gerencia?          @relation("SnapGerencia", fields: [snapGerenciaId], references: [id])
 
-  versoes           CotaVersao[]
-  transferencias    CotaTransferencia[]
-  comissoes         ComissaoApurada[]
-  estornos          Estorno[]
-  lancamentos       LancamentoAdministradora[]
-  comissoesAdm      ComissaoVendedorAdm[]
-  bonus             BonusIncentivo[]
-  eventos           EventoDominio[]
-  pendencias        Pendencia[]
-  divergencias      DivergenciaVendedor[]
+  versoes        CotaVersao[]
+  transferencias CotaTransferencia[]
+  comissoes      ComissaoApurada[]
+  estornos       Estorno[]
+  lancamentos    LancamentoAdministradora[]
+  comissoesAdm   ComissaoVendedorAdm[]
+  bonus          BonusIncentivo[]
+  eventos        EventoDominio[]
+  pendencias     Pendencia[]
+  divergencias   DivergenciaVendedor[]
 
   @@unique([administradoraId, contrato, grupo, cota, cpfCliente], name: "identidade")
   @@index([dataVenda])
@@ -588,14 +601,14 @@ model CotaVersao {
 }
 
 model CotaTransferencia {
-  id                  String   @id @default(cuid())
-  cotaId              String
-  vendedorAnteriorId  String?
-  vendedorNovoId      String
-  motivo              String
-  origem              String   // MANUAL | DIVERGENCIA_IMPORTACAO
-  criadoPorId         String?
-  criadoEm            DateTime @default(now())
+  id                 String   @id @default(cuid())
+  cotaId             String
+  vendedorAnteriorId String?
+  vendedorNovoId     String
+  motivo             String
+  origem             String // MANUAL | DIVERGENCIA_IMPORTACAO
+  criadoPorId        String?
+  criadoEm           DateTime @default(now())
 
   cota Cota @relation(fields: [cotaId], references: [id])
 
@@ -605,18 +618,18 @@ model CotaTransferencia {
 
 // Vendedor corrigido pela administradora numa reimportação: nunca aceito em silêncio.
 model DivergenciaVendedor {
-  id               String            @id @default(cuid())
-  cotaId           String
-  importacaoId     String?
-  nomeAnterior     String?
-  docAnterior      String?
-  nomeNovo         String?
-  docNovo          String?
-  status           StatusDivergencia @default(ABERTA)
-  resolvidoPorId   String?
-  resolvidoEm      DateTime?
-  observacao       String?
-  criadoEm         DateTime          @default(now())
+  id             String            @id @default(cuid())
+  cotaId         String
+  importacaoId   String?
+  nomeAnterior   String?
+  docAnterior    String?
+  nomeNovo       String?
+  docNovo        String?
+  status         StatusDivergencia @default(ABERTA)
+  resolvidoPorId String?
+  resolvidoEm    DateTime?
+  observacao     String?
+  criadoEm       DateTime          @default(now())
 
   cota Cota @relation(fields: [cotaId], references: [id])
 
@@ -684,22 +697,22 @@ model ModalidadeFlex {
 }
 
 model ConfiguracaoEstorno {
-  id                    String               @id @default(cuid())
+  id                   String                @id @default(cuid())
   // Códigos das categorias (destino VENDEDOR) e/ou "SUPERVISAO"/"GERENCIA".
-  participantes         String[]
-  criterioCancelamento  CriterioCancelamento
+  participantes        String[]
+  criterioCancelamento CriterioCancelamento
   // Limite zero desliga o estorno por cancelamento.
-  limiteParcelas        Int
+  limiteParcelas       Int
   // Recuperação: venda feita em período de recuperação e cancelada conforme este critério.
   // Nulos = qualquer quantidade de parcelas pagas.
-  criterioRecuperacao   CriterioCancelamento?
-  limiteRecuperacao     Int?
+  criterioRecuperacao  CriterioCancelamento?
+  limiteRecuperacao    Int?
   // Nulo = não definido: estorno não é apurado e vira pendência.
-  escopoBase            EscopoBaseEstorno?
-  vigenteDe             DateTime             @db.Date
-  vigenteAte            DateTime?            @db.Date
-  criadoPorId           String?
-  criadoEm              DateTime             @default(now())
+  escopoBase           EscopoBaseEstorno?
+  vigenteDe            DateTime              @db.Date
+  vigenteAte           DateTime?             @db.Date
+  criadoPorId          String?
+  criadoEm             DateTime              @default(now())
 
   estornos Estorno[]
 
@@ -726,16 +739,16 @@ model RegraEstorno {
 }
 
 model MetaPromocao {
-  id                 String         @id @default(cuid())
-  categoriaOrigemId  String
-  categoriaAlvoId    String
-  volumeMinimo       Decimal        @db.Decimal(18, 2)
-  alertaAoFaltar     Decimal        @db.Decimal(18, 2)
-  documentoExigido   TipoDocumento?
-  vigenteDe          DateTime       @db.Date
-  vigenteAte         DateTime?      @db.Date
-  criadoPorId        String?
-  criadoEm           DateTime       @default(now())
+  id                String         @id @default(cuid())
+  categoriaOrigemId String
+  categoriaAlvoId   String
+  volumeMinimo      Decimal        @db.Decimal(18, 2)
+  alertaAoFaltar    Decimal        @db.Decimal(18, 2)
+  documentoExigido  TipoDocumento?
+  vigenteDe         DateTime       @db.Date
+  vigenteAte        DateTime?      @db.Date
+  criadoPorId       String?
+  criadoEm          DateTime       @default(now())
 
   categoriaOrigem CategoriaVendedor @relation("MetaOrigem", fields: [categoriaOrigemId], references: [id])
   categoriaAlvo   CategoriaVendedor @relation("MetaAlvo", fields: [categoriaAlvoId], references: [id])
@@ -748,21 +761,21 @@ model MetaPromocao {
 // ============================================================
 
 model LancamentoAdministradora {
-  id               String         @id @default(cuid())
-  importacaoId     String
-  cotaId           String?
-  grupo            String
-  cota             String
-  contrato         String?
-  consorciado      String?
-  tipoOrigemTexto  String         // texto exato da coluna de origem
-  tipo             TipoLancamento
-  parcela          Int?
-  valor            Decimal        @db.Decimal(18, 2)
-  dataReferencia   DateTime?      @db.Date
-  hash             String         @unique
-  linhaOriginal    String
-  criadoEm         DateTime       @default(now())
+  id              String         @id @default(cuid())
+  importacaoId    String
+  cotaId          String?
+  grupo           String
+  cota            String
+  contrato        String?
+  consorciado     String?
+  tipoOrigemTexto String // texto exato da coluna de origem
+  tipo            TipoLancamento
+  parcela         Int?
+  valor           Decimal        @db.Decimal(18, 2)
+  dataReferencia  DateTime?      @db.Date
+  hash            String         @unique
+  linhaOriginal   String
+  criadoEm        DateTime       @default(now())
 
   importacao Importacao @relation(fields: [importacaoId], references: [id])
   cotaRef    Cota?      @relation(fields: [cotaId], references: [id])
@@ -796,28 +809,28 @@ model ComissaoVendedorAdm {
 }
 
 model BonusIncentivo {
-  id                  String    @id @default(cuid())
-  importacaoId        String
-  cotaId              String?
-  consorciado         String?
-  grupo               String
-  cota                String
-  contrato            String?
-  parcela             Int?
-  valorEvento         Decimal   @db.Decimal(18, 2)
-  percentualIncentivo Decimal   @db.Decimal(9, 4)
-  valorBonus          Decimal   @db.Decimal(18, 2)
+  id                       String    @id @default(cuid())
+  importacaoId             String
+  cotaId                   String?
+  consorciado              String?
+  grupo                    String
+  cota                     String
+  contrato                 String?
+  parcela                  Int?
+  valorEvento              Decimal   @db.Decimal(18, 2)
+  percentualIncentivo      Decimal   @db.Decimal(9, 4)
+  valorBonus               Decimal   @db.Decimal(18, 2)
   // Atribuição congelada na importação (ou na reconciliação registrada).
-  vendedorNaImportacaoId String?
+  vendedorNaImportacaoId   String?
   vendedorNaImportacaoNome String?
-  equipeId            String?
-  gerenciaId          String?
-  reconciliadoEm      DateTime?
-  reconciliadoPorId   String?
-  dataReferencia      DateTime? @db.Date
-  hash                String    @unique
-  linhaOriginal       String
-  criadoEm            DateTime  @default(now())
+  equipeId                 String?
+  gerenciaId               String?
+  reconciliadoEm           DateTime?
+  reconciliadoPorId        String?
+  dataReferencia           DateTime? @db.Date
+  hash                     String    @unique
+  linhaOriginal            String
+  criadoEm                 DateTime  @default(now())
 
   importacao Importacao @relation(fields: [importacaoId], references: [id])
   cotaRef    Cota?      @relation(fields: [cotaId], references: [id])
@@ -834,36 +847,36 @@ model BonusIncentivo {
 // ============================================================
 
 model ComissaoApurada {
-  id                String          @id @default(cuid())
-  cotaId            String
-  parcela           Int
-  destino           DestinoComissao
-  titularVendedorId String?         // documento (destino VENDEDOR)
-  titularPessoaId   String          // pessoa beneficiária (consolida a folha)
-  tabelaId          String
-  base              Decimal         @db.Decimal(18, 2)
-  percentual        Decimal         @db.Decimal(9, 4)
-  valor             Decimal         @db.Decimal(18, 2)
-  pagaPelaWr        Boolean
-  status            StatusComissao  @default(PREVISTA)
+  id                       String          @id @default(cuid())
+  cotaId                   String
+  parcela                  Int
+  destino                  DestinoComissao
+  titularVendedorId        String? // documento (destino VENDEDOR)
+  titularPessoaId          String // pessoa beneficiária (consolida a folha)
+  tabelaId                 String
+  base                     Decimal         @db.Decimal(18, 2)
+  percentual               Decimal         @db.Decimal(9, 4)
+  valor                    Decimal         @db.Decimal(18, 2)
+  pagaPelaWr               Boolean
+  status                   StatusComissao  @default(PREVISTA)
   parcelasPagasNaLiberacao Int?
-  liberadaEm        DateTime?
-  folhaId           String?
-  memoria           Json
-  canceladaEm       DateTime?
-  motivoCancelamento String?
+  liberadaEm               DateTime?
+  folhaId                  String?
+  memoria                  Json
+  canceladaEm              DateTime?
+  motivoCancelamento       String?
   // Ajuste de comissão já em folha fechada: aponta para a linha original congelada.
   // Pode ser negativo (devolução do que foi pago a mais). Nunca altera a folha fechada.
-  ajusteDeId        String?
-  criadoEm          DateTime        @default(now())
+  ajusteDeId               String?
+  criadoEm                 DateTime        @default(now())
 
-  cota            Cota           @relation(fields: [cotaId], references: [id])
+  cota            Cota              @relation(fields: [cotaId], references: [id])
   ajusteDe        ComissaoApurada?  @relation("Ajustes", fields: [ajusteDeId], references: [id])
   ajustes         ComissaoApurada[] @relation("Ajustes")
-  titularVendedor Vendedor?      @relation(fields: [titularVendedorId], references: [id])
-  titularPessoa   Pessoa         @relation(fields: [titularPessoaId], references: [id])
-  tabela          TabelaComissao @relation(fields: [tabelaId], references: [id])
-  folha           FolhaComissao? @relation(fields: [folhaId], references: [id])
+  titularVendedor Vendedor?         @relation(fields: [titularVendedorId], references: [id])
+  titularPessoa   Pessoa            @relation(fields: [titularPessoaId], references: [id])
+  tabela          TabelaComissao    @relation(fields: [tabelaId], references: [id])
+  folha           FolhaComissao?    @relation(fields: [folhaId], references: [id])
 
   @@index([cotaId])
   @@index([titularPessoaId, status])
@@ -873,25 +886,25 @@ model ComissaoApurada {
 }
 
 model Estorno {
-  id                 String        @id @default(cuid())
-  cotaId             String
-  destino            DestinoComissao
-  tipo               TipoEstorno
-  titularVendedorId  String?
-  titularPessoaId    String?       // nulo = SEM TITULAR (vira pendência, nunca some)
-  configuracaoId     String
-  regraId            String?
-  parcelasPagas      Int
-  comissaoBase       Decimal       @db.Decimal(18, 2)
-  percentual         Decimal       @db.Decimal(9, 4)
-  valor              Decimal       @db.Decimal(18, 2)
-  dataEvento         DateTime      @db.Date // data do cancelamento
-  dataDebitoAdm      DateTime?     @db.Date // competência da cobrança (CV056E)
-  status             StatusEstorno @default(A_COBRAR)
-  memoria            Json
-  invalidadoEm       DateTime?
-  motivoInvalidacao  String?
-  criadoEm           DateTime      @default(now())
+  id                String          @id @default(cuid())
+  cotaId            String
+  destino           DestinoComissao
+  tipo              TipoEstorno
+  titularVendedorId String?
+  titularPessoaId   String? // nulo = SEM TITULAR (vira pendência, nunca some)
+  configuracaoId    String
+  regraId           String?
+  parcelasPagas     Int
+  comissaoBase      Decimal         @db.Decimal(18, 2)
+  percentual        Decimal         @db.Decimal(9, 4)
+  valor             Decimal         @db.Decimal(18, 2)
+  dataEvento        DateTime        @db.Date // data do cancelamento
+  dataDebitoAdm     DateTime?       @db.Date // competência da cobrança (CV056E)
+  status            StatusEstorno   @default(A_COBRAR)
+  memoria           Json
+  invalidadoEm      DateTime?
+  motivoInvalidacao String?
+  criadoEm          DateTime        @default(now())
 
   cota            Cota                @relation(fields: [cotaId], references: [id])
   titularVendedor Vendedor?           @relation(fields: [titularVendedorId], references: [id])
@@ -908,16 +921,16 @@ model Estorno {
 
 // Ciclo de vida da cobrança do estorno (append-only).
 model EstornoMovimento {
-  id          String        @id @default(cuid())
-  estornoId   String
-  de          StatusEstorno
-  para        StatusEstorno
-  valor       Decimal?      @db.Decimal(18, 2)
-  forma       String?       // DESCONTO_EM_FOLHA | COBRANCA_A_PARTE | PARCELAMENTO
-  referencia  String?
-  motivo      String
-  usuarioId   String?
-  criadoEm    DateTime      @default(now())
+  id         String        @id @default(cuid())
+  estornoId  String
+  de         StatusEstorno
+  para       StatusEstorno
+  valor      Decimal?      @db.Decimal(18, 2)
+  forma      String? // DESCONTO_EM_FOLHA | COBRANCA_A_PARTE | PARCELAMENTO
+  referencia String?
+  motivo     String
+  usuarioId  String?
+  criadoEm   DateTime      @default(now())
 
   estorno Estorno @relation(fields: [estornoId], references: [id])
 
@@ -926,19 +939,19 @@ model EstornoMovimento {
 }
 
 model FolhaComissao {
-  id               String      @id @default(cuid())
-  competencia      String      // AAAA-MM
-  liberadasAte     DateTime
-  status           StatusFolha @default(FECHADA)
-  total            Decimal     @db.Decimal(18, 2)
-  quantidade       Int
-  fechadaEm        DateTime    @default(now())
-  fechadaPorId     String?
-  pagaEm           DateTime?
-  pagaPorId        String?
-  valorPagoInformado Decimal?  @db.Decimal(18, 2)
+  id                  String      @id @default(cuid())
+  competencia         String // AAAA-MM
+  liberadasAte        DateTime
+  status              StatusFolha @default(FECHADA)
+  total               Decimal     @db.Decimal(18, 2)
+  quantidade          Int
+  fechadaEm           DateTime    @default(now())
+  fechadaPorId        String?
+  pagaEm              DateTime?
+  pagaPorId           String?
+  valorPagoInformado  Decimal?    @db.Decimal(18, 2)
   referenciaPagamento String?
-  observacao       String?
+  observacao          String?
 
   comissoes ComissaoApurada[]
 
@@ -948,15 +961,15 @@ model FolhaComissao {
 
 // Dinheiro que deveria ter sido apurado e não foi (Princípio 6).
 model Pendencia {
-  id          String          @id @default(cuid())
+  id          String           @id @default(cuid())
   cotaId      String?
   tipo        TipoPendencia
   destino     DestinoComissao?
-  chave       String          // dedupe: tipo + destino + detalhe
+  chave       String // dedupe: tipo + destino + detalhe
   descricao   String
   detalhe     Json?
   resolvidaEm DateTime?
-  criadoEm    DateTime        @default(now())
+  criadoEm    DateTime         @default(now())
 
   cota Cota? @relation(fields: [cotaId], references: [id])
 
@@ -970,29 +983,29 @@ model Pendencia {
 // ============================================================
 
 model Importacao {
-  id                 String           @id @default(cuid())
-  tipo               TipoImportacao
-  administradoraId   String
-  nomeArquivo        String
-  hashArquivo        String
-  tamanhoBytes       Int
-  status             StatusImportacao @default(RECEBIDA)
-  totalLinhas        Int              @default(0)
-  novos              Int              @default(0)
-  atualizados        Int              @default(0)
-  repetidos          Int              @default(0)
-  erros              Int              @default(0)
-  divergencias       Int              @default(0)
-  totalArquivo       Decimal?         @db.Decimal(18, 2)
-  totalReconhecido   Decimal?         @db.Decimal(18, 2)
-  diferencaConferencia Decimal?       @db.Decimal(18, 2)
-  cursor             Int              @default(0)
-  mensagem           String?
-  enviadoPorId       String?
-  enviadoEm          DateTime         @default(now())
-  concluidoEm        DateTime?
+  id                   String           @id @default(cuid())
+  tipo                 TipoImportacao
+  administradoraId     String
+  nomeArquivo          String
+  hashArquivo          String
+  tamanhoBytes         Int
+  status               StatusImportacao @default(RECEBIDA)
+  totalLinhas          Int              @default(0)
+  novos                Int              @default(0)
+  atualizados          Int              @default(0)
+  repetidos            Int              @default(0)
+  erros                Int              @default(0)
+  divergencias         Int              @default(0)
+  totalArquivo         Decimal?         @db.Decimal(18, 2)
+  totalReconhecido     Decimal?         @db.Decimal(18, 2)
+  diferencaConferencia Decimal?         @db.Decimal(18, 2)
+  cursor               Int              @default(0)
+  mensagem             String?
+  enviadoPorId         String?
+  enviadoEm            DateTime         @default(now())
+  concluidoEm          DateTime?
 
-  administradora Administradora      @relation(fields: [administradoraId], references: [id])
+  administradora Administradora             @relation(fields: [administradoraId], references: [id])
   linhas         LinhaDeImportacao[]
   errosLista     ImportacaoErro[]
   versoes        CotaVersao[]
@@ -1077,27 +1090,27 @@ model Notificacao {
 }
 
 model ConfiguracaoSistema {
-  chave        String   @id
-  valor        Json
-  descricao    String?
+  chave           String   @id
+  valor           Json
+  descricao       String?
   atualizadoPorId String?
-  atualizadoEm DateTime @default(now()) @updatedAt
+  atualizadoEm    DateTime @default(now()) @updatedAt
 
   @@map("configuracao_sistema")
 }
 
 // Fila de recálculo: o pedido é gravado junto com a cota, na mesma transação.
 model EventoDominio {
-  id                String       @id @default(cuid())
-  tipo              String       // APURAR_COTA
-  cotaId            String?
-  payload           Json?
-  status            StatusEvento @default(PENDENTE)
-  tentativas        Int          @default(0)
-  proximaTentativaEm DateTime    @default(now())
-  ultimoErro        String?
-  criadoEm          DateTime     @default(now())
-  processadoEm      DateTime?
+  id                 String       @id @default(cuid())
+  tipo               String // APURAR_COTA
+  cotaId             String?
+  payload            Json?
+  status             StatusEvento @default(PENDENTE)
+  tentativas         Int          @default(0)
+  proximaTentativaEm DateTime     @default(now())
+  ultimoErro         String?
+  criadoEm           DateTime     @default(now())
+  processadoEm       DateTime?
 
   cota     Cota?           @relation(fields: [cotaId], references: [id])
   entregas EventoEntrega[]
@@ -1142,17 +1155,17 @@ model AcessoDadoPessoal {
 }
 
 model SolicitacaoTitular {
-  id           String                   @id @default(cuid())
-  documento    String                   // CPF/CNPJ do titular (dígitos)
-  nome         String
-  tipo         TipoSolicitacaoTitular
-  descricao    String
-  status       StatusSolicitacaoTitular @default(ABERTA)
-  resposta     String?
-  criadoPorId  String?
-  criadoEm     DateTime                 @default(now())
+  id             String                   @id @default(cuid())
+  documento      String // CPF/CNPJ do titular (dígitos)
+  nome           String
+  tipo           TipoSolicitacaoTitular
+  descricao      String
+  status         StatusSolicitacaoTitular @default(ABERTA)
+  resposta       String?
+  criadoPorId    String?
+  criadoEm       DateTime                 @default(now())
   concluidoPorId String?
-  concluidoEm  DateTime?
+  concluidoEm    DateTime?
 
   @@index([documento])
   @@map("solicitacao_titular")
@@ -1161,16 +1174,16 @@ model SolicitacaoTitular {
 // Estrutura preparada para anexos (armazenamento externo por storageKey).
 // Não há tela de upload: nenhum armazenamento de arquivos foi provisionado.
 model Anexo {
-  id          String   @id @default(cuid())
-  entidade    String   // Vendedor | Cota | FolhaComissao
-  entidadeId  String
-  nomeArquivo String
-  tipoMime    String
+  id           String   @id @default(cuid())
+  entidade     String // Vendedor | Cota | FolhaComissao
+  entidadeId   String
+  nomeArquivo  String
+  tipoMime     String
   tamanhoBytes Int
-  sha256      String
-  storageKey  String   @unique
-  criadoPorId String?
-  criadoEm    DateTime @default(now())
+  sha256       String
+  storageKey   String   @unique
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
 
   @@index([entidade, entidadeId])
   @@map("anexo")

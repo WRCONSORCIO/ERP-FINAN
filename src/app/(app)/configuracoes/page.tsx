@@ -135,7 +135,7 @@ function EditarLinhaTabela({ t, uso }: { t: LinhaTabela; uso: number }) {
   );
 }
 
-function CamposCategoria({ c }: { c?: { nome: string; descricao: string | null; ordem: number; documentosAceitos: string[]; pagaPelaWr: boolean; geraSupervisao: boolean; geraGerencia: boolean; contaParaPromocao: boolean } }) {
+function CamposCategoria({ c }: { c?: { nome: string; descricao: string | null; ordem: number; documentosAceitos: string[]; pagaPelaWr: boolean; geraSupervisao: boolean; geraGerencia: boolean; contaParaPromocao: boolean; recebeSobreOutrosDocumentos: boolean } }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
       <Campo rotulo="Nome" nome="nome"><input name="nome" defaultValue={c?.nome} className="campo" required /></Campo>
@@ -150,6 +150,7 @@ function CamposCategoria({ c }: { c?: { nome: string; descricao: string | null; 
         <label className="block"><input type="checkbox" name="geraSupervisao" value="true" defaultChecked={c?.geraSupervisao ?? false} /> A venda gera comissão para o supervisor</label>
         <label className="block"><input type="checkbox" name="geraGerencia" value="true" defaultChecked={c?.geraGerencia ?? false} /> A venda gera comissão para o gerente</label>
         <label className="block"><input type="checkbox" name="contaParaPromocao" value="true" defaultChecked={c?.contaParaPromocao ?? true} /> As vendas contam para a meta de promoção</label>
+        <label className="block"><input type="checkbox" name="recebeSobreOutrosDocumentos" value="true" defaultChecked={c?.recebeSobreOutrosDocumentos ?? false} /> Recebe também sobre as vendas do outro CNPJ da mesma pessoa (ex.: o Expert recebe o % dele sobre as vendas do CNPJ Veterano, a partir da data em que virou Expert)</label>
       </fieldset>
     </div>
   );
@@ -196,12 +197,12 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
           <Secao titulo="Categorias de vendedor" descricao="Cada vendedor tem uma categoria. Ela decide quem paga a comissão dele e se a venda também gera comissão para o supervisor e o gerente. Alterações valem para as vendas que chegarem depois. Categoria já usada não pode ser excluída, só desativada." semPadding>
             <div className="tabela-quadro">
               <table className="tabela">
-                <thead><tr><th>Categoria</th><th>Aceita</th><th>Quem paga o vendedor</th><th>Gera p/ supervisor</th><th>Gera p/ gerente</th><th>Conta p/ promoção</th><th className="direita">Usos</th><th>Situação</th>{editar ? <th>Ações</th> : null}</tr></thead>
+                <thead><tr><th>Categoria</th><th>Aceita</th><th>Quem paga o vendedor</th><th>Gera p/ supervisor</th><th>Gera p/ gerente</th><th>Conta p/ promoção</th><th>Recebe sobre o outro CNPJ</th><th className="direita">Usos</th><th>Situação</th>{editar ? <th>Ações</th> : null}</tr></thead>
                 <tbody>
                   {d.categorias.map((c) => (
                     <tr key={c.id}>
                       <td className="font-semibold">{c.nome}<span className="numero block text-[11px] font-normal text-wr-texto-3">{c.codigo}</span></td><td>{c.documentosAceitos.join(' ou ')}</td>
-                      <td>{c.pagaPelaWr ? 'WR' : <Etiqueta tom="azul">administradora</Etiqueta>}</td><td>{c.geraSupervisao ? 'sim' : 'não'}</td><td>{c.geraGerencia ? 'sim' : 'não'}</td><td>{c.contaParaPromocao ? 'sim' : 'não'}</td>
+                      <td>{c.pagaPelaWr ? 'WR' : <Etiqueta tom="azul">administradora</Etiqueta>}</td><td>{c.geraSupervisao ? 'sim' : 'não'}</td><td>{c.geraGerencia ? 'sim' : 'não'}</td><td>{c.contaParaPromocao ? 'sim' : 'não'}</td><td>{c.recebeSobreOutrosDocumentos ? 'sim' : 'não'}</td>
                       <td className="direita numero">{d.usos.get(c.id) ?? 0}</td>
                       <td>{c.ativo ? <Etiqueta tom="verde">ativa</Etiqueta> : <Etiqueta>desativada</Etiqueta>}</td>
                       {editar ? (

@@ -9,7 +9,7 @@ import { planejarNaLinhaDoTempo } from '@/dominio/vigencia';
 import { auditar } from '../auditoria';
 import { exigir, type Sessao } from '../contexto';
 import { enfileirarApuracao } from '../fila';
-import { resolverSnapshot } from '../snapshot';
+import { documentosDaPessoa, expertNaData, resolverSnapshot } from '../snapshot';
 import { carregarCadastroCasamento } from '../cadastro-casamento';
 import { casarVendedor } from '@/dominio/casamento';
 import { zBooleano, zData, zDataOpcional, zId, zIdOpcional, zMotivo, zTexto, zTextoOpcional } from './esquemas';
@@ -103,8 +103,34 @@ export async function cadastrarVendedor(s: Sessao, d: z.infer<typeof esquemaCada
     const aloc = await tx.vendedorAlocacao.create({ data: { vendedorId: v.id, equipeId: d.equipeId, vigenteDe: d.vigenteDe, motivo: 'cadastro', criadoPorId: s.usuarioId } });
     await auditar(tx, { sessao: s, acao: 'CRIACAO', entidade: 'Vendedor', entidadeId: v.id, depois: { vendedor: v, categoria: cat, alocacao: aloc } });
     const vinculadas = await vincularVendasPendentes(tx, s, v);
+    await reavaliarExpertDaPessoa(tx, s, pessoaId, 'documento cadastrado');
     return { vendedor: v, pessoaId, vinculadas };
   }, { timeout: 60_000 });
+}
+
+/**
+ * Depois de mudar a categoria (ou a data dela), o cadastro ou o desligamento de um documento: refaz, nas
+ * vendas da pessoa, só a informação de qual CNPJ Expert recebe sobre elas (pela data de cada venda) e
+ * manda recalcular as que mudaram. A linha do Expert é paga pela administradora: não mexe em folha.
+ */
+export async function reavaliarExpertDaPessoa(tx: Tx, s: Sessao, pessoaId: string, motivo: string): Promise<number> {
+  const cotas = await tx.cota.findMany({
+    where: { snapVendedor: { pessoaId }, snapCategoriaId: { not: null } },
+    select: { id: true, dataVenda: true, snapVendedorId: true, snapExpertVendedorId: true, snapExpertCategoriaId: true, snapExpertPagaPelaWr: true, snapCategoria: { select: { recebeSobreOutrosDocumentos: true } } },
+  });
+  const documentos = await documentosDaPessoa(tx, pessoaId);
+  let alteradas = 0;
+  for (const c of cotas) {
+    const novo = expertNaData(documentos, c.snapVendedorId as string, c.dataVenda, c.snapCategoria);
+    if (novo.snapExpertVendedorId === c.snapExpertVendedorId && novo.snapExpertCategoriaId === c.snapExpertCategoriaId && novo.snapExpertPagaPelaWr === c.snapExpertPagaPelaWr) continue;
+    await tx.cota.update({ where: { id: c.id }, data: novo });
+    await enfileirarApuracao(tx, c.id, motivo);
+    alteradas++;
+  }
+  if (alteradas > 0) {
+    await auditar(tx, { sessao: s, acao: 'RECONGELAMENTO', entidade: 'Pessoa', entidadeId: pessoaId, depois: { vendasAtualizadas: alteradas }, contexto: { operacao: 'documento Expert das vendas', motivo } });
+  }
+  return alteradas;
 }
 
 /** Trava comum: nova vigência não pode tirar a regra de venda já apurada sob a vigência atual. */
@@ -134,6 +160,7 @@ export async function alterarCategoria(s: Sessao, d: z.infer<typeof esquemaAlter
       // Mesma categoria logo depois: é só antecipar o início dela (o intervalo não tinha categoria).
       const depois = await tx.vendedorCategoria.update({ where: { id: plano.seguinte.id }, data: { vigenteDe: d.vigenteDe } });
       await auditar(tx, { sessao: s, acao: 'ALTERACAO_CATEGORIA', entidade: 'VendedorCategoria', entidadeId: depois.id, antes: { vigenteDe: plano.seguinte.vigenteDe }, depois: { vigenteDe: d.vigenteDe }, contexto: { operacao: 'antecipação do início', motivo: d.motivo } });
+      await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'categoria alterada');
       return;
     }
     if (atual && plano.encerrarAnteriorEm) {
@@ -154,7 +181,8 @@ export async function alterarCategoria(s: Sessao, d: z.infer<typeof esquemaAlter
       antes: atual ? { categoria: atual.categoria.codigo, vigenteDe: atual.vigenteDe, vigenteAte: atual.vigenteAte } : null,
       depois: { categoria: nova.codigo, vigenteDe: criada.vigenteDe, vigenteAte: criada.vigenteAte, encerradaAnteriorEm: plano.encerrarAnteriorEm }, contexto: { motivo: d.motivo },
     });
-  });
+    await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'categoria alterada');
+  }, { timeout: 60_000 });
 }
 
 /**
@@ -195,7 +223,9 @@ export async function corrigirInicioCategoria(s: Sessao, d: z.infer<typeof esque
       sessao: s, acao: 'ALTERACAO_CATEGORIA', entidade: 'VendedorCategoria', entidadeId: vig.id,
       antes: { vigenteDe: vig.vigenteDe }, depois: { vigenteDe: d.novoInicio }, contexto: { operacao: 'correção de data de início', motivo: d.motivo },
     });
-  });
+    const dono = await tx.vendedor.findUniqueOrThrow({ where: { id: vig.vendedorId }, select: { pessoaId: true } });
+    await reavaliarExpertDaPessoa(tx, s, dono.pessoaId, 'data da categoria corrigida');
+  }, { timeout: 60_000 });
 }
 
 export async function alterarAlocacao(s: Sessao, d: z.infer<typeof esquemaAlterarAlocacao>) {
@@ -260,7 +290,8 @@ export async function desligarVendedor(s: Sessao, d: z.infer<typeof esquemaDesli
     if (v.status === 'DESLIGADO') throw new ErroDeDominio('Este documento já está desligado.');
     const depois = await tx.vendedor.update({ where: { id: v.id }, data: { status: 'DESLIGADO', desligadoEm: d.data } });
     await auditar(tx, { sessao: s, acao: 'DESATIVACAO', entidade: 'Vendedor', entidadeId: v.id, antes: v, depois, contexto: { motivo: d.motivo } });
-  });
+    await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'documento desligado');
+  }, { timeout: 60_000 });
 }
 
 export async function reativarVendedor(s: Sessao, d: z.infer<typeof esquemaReativar>) {
@@ -270,7 +301,8 @@ export async function reativarVendedor(s: Sessao, d: z.infer<typeof esquemaReati
     if (v.status === 'ATIVO') throw new ErroDeDominio('Este documento já está ativo.');
     const depois = await tx.vendedor.update({ where: { id: v.id }, data: { status: 'ATIVO', desligadoEm: null } });
     await auditar(tx, { sessao: s, acao: 'REATIVACAO', entidade: 'Vendedor', entidadeId: v.id, antes: v, depois, contexto: { motivo: d.motivo } });
-  });
+    await reavaliarExpertDaPessoa(tx, s, v.pessoaId, 'documento reativado');
+  }, { timeout: 60_000 });
 }
 
 /**

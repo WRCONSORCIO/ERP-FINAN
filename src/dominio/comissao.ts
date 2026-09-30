@@ -1,9 +1,10 @@
 import { aplicarPercentual, formatarMoeda, formatarPercentual, moeda, paraTexto, type Dec } from '@/lib/dinheiro';
 import { formatarData, paraISO } from '@/lib/datas';
 
-export type Destino = 'VENDEDOR' | 'SUPERVISAO' | 'GERENCIA';
-export const DESTINOS: readonly Destino[] = ['VENDEDOR', 'SUPERVISAO', 'GERENCIA'];
-export const ROTULO_DESTINO: Record<Destino, string> = { VENDEDOR: 'Vendedor', SUPERVISAO: 'Supervisor', GERENCIA: 'Gerente' };
+/** EXPERT = o CNPJ Expert da mesma pessoa, que recebe o % dele sobre as vendas do CNPJ Veterano. */
+export type Destino = 'VENDEDOR' | 'SUPERVISAO' | 'GERENCIA' | 'EXPERT';
+export const DESTINOS: readonly Destino[] = ['VENDEDOR', 'SUPERVISAO', 'GERENCIA', 'EXPERT'];
+export const ROTULO_DESTINO: Record<Destino, string> = { VENDEDOR: 'Vendedor', SUPERVISAO: 'Supervisor', GERENCIA: 'Gerente', EXPERT: 'Expert (sobre o Veterano)' };
 
 export interface CategoriaDaVenda {
   id: string;
@@ -22,9 +23,9 @@ export function destinosDaCategoria(c: CategoriaDaVenda): Destino[] {
   return d;
 }
 
-/** Vendedor: a WR paga se a categoria disser. Supervisão e gerência: sempre a WR. */
+/** Vendedor: a WR paga se a categoria disser. Supervisão e gerência: sempre a WR. Expert: informado pela linha. */
 export function pagaPelaWr(destino: Destino, c: CategoriaDaVenda): boolean {
-  return destino === 'VENDEDOR' ? c.pagaPelaWr : true;
+  return destino === 'VENDEDOR' || destino === 'EXPERT' ? c.pagaPelaWr : true;
 }
 
 export interface TitularResolvido {
@@ -46,7 +47,11 @@ export interface EntradaComissao {
   categoria: CategoriaDaVenda;
   segmento: { codigo: string; nome: string };
   flex: { id: string; codigo: string; nome: string; percentual: Dec; vigenteDe: Date; vigenteAte: Date | null };
-  destinos: ReadonlyArray<{ destino: Destino; titular: TitularResolvido | null; tabela: TabelaResolvida | null }>;
+  destinos: ReadonlyArray<{
+    destino: Destino; titular: TitularResolvido | null; tabela: TabelaResolvida | null;
+    /** Só para EXPERT: quem paga e a categoria cuja tabela foi usada (a do documento Expert). */
+    pagaPelaWr?: boolean; categoria?: { codigo: string; nome: string };
+  }>;
 }
 
 export interface LinhaComissao {
@@ -112,7 +117,8 @@ export function calcularComissoes(e: EntradaComissao): { linhas: LinhaComissao[]
         destino: d.destino,
         descricao: d.destino === 'SUPERVISAO'
           ? 'Equipe sem supervisor vigente na data da venda'
-          : d.destino === 'GERENCIA' ? 'Gerência sem gerente vigente na data da venda' : 'Venda sem vendedor',
+          : d.destino === 'GERENCIA' ? 'Gerência sem gerente vigente na data da venda'
+            : d.destino === 'EXPERT' ? 'Documento Expert da pessoa não encontrado' : 'Venda sem vendedor',
       });
       continue;
     }
@@ -120,16 +126,17 @@ export function calcularComissoes(e: EntradaComissao): { linhas: LinhaComissao[]
       pendencias.push({
         tipo: 'SEM_TABELA',
         destino: d.destino,
-        descricao: `Sem tabela de comissão vigente em ${formatarData(e.cota.dataVenda)} para ${d.destino === 'VENDEDOR' ? e.categoria.nome : d.destino.toLowerCase()} · ${e.segmento.nome}`,
+        descricao: `Sem tabela de comissão vigente em ${formatarData(e.cota.dataVenda)} para ${d.destino === 'VENDEDOR' ? e.categoria.nome : d.destino === 'EXPERT' ? `${d.categoria?.nome ?? 'Expert'} (sobre o Veterano)` : d.destino.toLowerCase()} · ${e.segmento.nome}`,
       });
       continue;
     }
-    const paga = pagaPelaWr(d.destino, e.categoria);
+    const paga = d.pagaPelaWr ?? pagaPelaWr(d.destino, e.categoria);
+    const categoriaDaLinha = d.categoria ?? { codigo: e.categoria.codigo, nome: e.categoria.nome };
     const faixas = [...d.tabela.faixas].sort((a, b) => a.parcela - b.parcela);
     for (const f of faixas) {
       const valor = aplicarPercentual(base, f.percentual);
       const liberada = f.parcela <= e.cota.parcelasPagas;
-      const rotulo = d.destino === 'VENDEDOR' ? rotuloRegra : d.destino;
+      const rotulo = d.destino === 'VENDEDOR' ? rotuloRegra : d.destino === 'EXPERT' ? `${categoriaDaLinha.codigo} sobre ${rotuloRegra}` : d.destino;
       const formula =
         `${formatarMoeda(e.cota.credito)} × ${formatarPercentual(e.flex.percentual)} (flex) = ${formatarMoeda(base)} (base) × ` +
         `${formatarPercentual(f.percentual)} (${rotulo}, ${ordinal(f.parcela)}) = ${formatarMoeda(valor)}`;
@@ -156,7 +163,7 @@ export function calcularComissoes(e: EntradaComissao): { linhas: LinhaComissao[]
           valor: paraTexto(valor),
           destino: d.destino,
           segmento: e.segmento.codigo,
-          categoria: { codigo: e.categoria.codigo, nome: e.categoria.nome },
+          categoria: categoriaDaLinha,
           regra: {
             tabelaId: d.tabela.id, excecaoIndividual: d.tabela.excecao,
             vigenteDe: paraISO(d.tabela.vigenteDe), vigenteAte: d.tabela.vigenteAte ? paraISO(d.tabela.vigenteAte) : null,

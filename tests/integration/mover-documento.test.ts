@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { moverDocumento } from '@/servidor/servicos/vendedores';
+import { corrigirNome, moverDocumento } from '@/servidor/servicos/vendedores';
 import { apurarTudo, csv, estrutura, importar, preparar, vendedor } from './ajuda';
 
 describe('documento cadastrado na pessoa errada', () => {
@@ -41,5 +41,15 @@ describe('documento cadastrado na pessoa errada', () => {
     const expert = await prisma.comissaoApurada.findMany({ where: { destino: 'EXPERT', status: { not: 'CANCELADA' } }, orderBy: { parcela: 'asc' } });
     expect(expert.map((c) => `${c.parcela}:${c.valor.toFixed(2)}`)).toEqual(['1:300.00', '3:100.00', '4:100.00']);
     expect(expert.every((c) => c.titularVendedorId === exp.id && c.titularPessoaId === vet.pessoaId)).toBe(true);
+  });
+  it('nome cadastrado errado: corrige o nome do documento e da pessoa, com registro', async () => {
+    const { admin, cat } = await preparar();
+    const est = await estrutura(admin, 'A');
+    const v = await vendedor(admin, { nome: 'Lucas Coelho Andrade', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
+    await corrigirNome(admin, { vendedorId: v.id, nome: 'keila  costa coelho', tambemPessoa: true, motivo: 'CPF era da Keila' });
+    expect((await prisma.vendedor.findUniqueOrThrow({ where: { id: v.id } })).nome).toBe('KEILA COSTA COELHO');
+    expect((await prisma.pessoa.findUniqueOrThrow({ where: { id: v.pessoaId } })).nome).toBe('KEILA COSTA COELHO');
+    expect(await prisma.auditLog.count({ where: { entidade: 'Vendedor', entidadeId: v.id, acao: 'ALTERACAO' } })).toBe(1);
+    await expect(corrigirNome(admin, { vendedorId: v.id, nome: 'KEILA COSTA COELHO', tambemPessoa: true, motivo: 'de novo' })).rejects.toThrow(/já é este/);
   });
 });

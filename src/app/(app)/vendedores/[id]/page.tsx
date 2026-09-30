@@ -12,7 +12,7 @@ import { BotaoVoltar } from '@/ui/botao-voltar';
 import { Dobra } from '@/ui/dobra';
 import { FormularioAcao } from '@/ui/formulario-acao';
 import {
-  alterarAlocacaoAcao, alterarCategoriaAcao, cancelarRecuperacaoAcao, corrigirInicioAcao, desligarAcao, moverDocumentoAcao, reativarAcao, registrarRecuperacaoAcao, vincularNomeAcao,
+  alterarAlocacaoAcao, alterarCategoriaAcao, cancelarRecuperacaoAcao, corrigirInicioAcao, corrigirNomeAcao, desligarAcao, moverDocumentoAcao, reativarAcao, registrarRecuperacaoAcao, vincularNomeAcao,
 } from '../acoes';
 
 export const metadata: Metadata = { title: 'Ficha do vendedor' };
@@ -206,6 +206,16 @@ export default async function FichaVendedor({ params }: { params: Promise<{ id: 
                       <FormularioAcao acao={vincularNomeAcao} rotulo="Vincular" confirmacao="As vendas que chegarem com este nome passam a ser deste vendedor.">
                         <input type="hidden" name="vendedorId" value={doc.id} />
                         <Campo rotulo="Nome como vem no arquivo" nome={`al-${doc.id}`}><input id={`al-${doc.id}`} name="nomeImportado" className="campo" required /></Campo>
+                      </FormularioAcao>
+                    </div>
+                  </Dobra>
+                  <Dobra chave={`nome-${doc.id}`} titulo="Nome cadastrado errado? Corrigir nome">
+                    <div className="p-3">
+                      <FormularioAcao acao={corrigirNomeAcao} rotulo="Corrigir" confirmacao={`Troca o nome do ${doc.tipoDocumento} ${formatarDocumento(doc.documento)}. As vendas e comissões continuam ligadas a este documento. Fica registrado.`}>
+                        <input type="hidden" name="vendedorId" value={doc.id} />
+                        <Campo rotulo="Nome certo (como no CPF/CNPJ)" nome={`nm-${doc.id}`}><input id={`nm-${doc.id}`} name="nome" defaultValue={doc.nome} className="campo" required /></Campo>
+                        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" name="tambemPessoa" value="true" defaultChecked={ficha.documentos.length === 1} /> Corrigir também o nome da pessoa ({ficha.pessoa.nome})</label>
+                        <Campo rotulo="Motivo" nome={`nmm-${doc.id}`}><input id={`nmm-${doc.id}`} name="motivo" className="campo" defaultValue="Nome cadastrado errado" required /></Campo>
                       </FormularioAcao>
                     </div>
                   </Dobra>

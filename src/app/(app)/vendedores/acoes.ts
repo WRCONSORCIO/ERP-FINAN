@@ -80,3 +80,10 @@ export async function moverDocumentoAcao(_: Estado, fd: FormData) {
     };
   });
 }
+
+export async function corrigirNomeAcao(_: Estado, fd: FormData) {
+  return executar('vendedores', 'editar', V.esquemaCorrigirNome, formParaObjeto(fd), async (s, d) => {
+    await V.corrigirNome(s, d);
+    return { mensagem: d.tambemPessoa ? 'Nome do documento e da pessoa corrigidos.' : 'Nome do documento corrigido.' };
+  });
+}

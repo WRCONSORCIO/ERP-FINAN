@@ -32,6 +32,7 @@ export const esquemaDesligar = z.object({ vendedorId: zId, data: zData, motivo: 
 export const esquemaReativar = z.object({ vendedorId: zId, motivo: zMotivo });
 export const esquemaVincularNome = z.object({ nomeImportado: zTexto(200), vendedorId: zId });
 export const esquemaMoverDocumento = z.object({ vendedorId: zId, pessoaDestinoId: zId, motivo: zMotivo });
+export const esquemaCorrigirNome = z.object({ vendedorId: zId, nome: zTexto(200), tambemPessoa: zBooleano, motivo: zMotivo });
 
 async function exigirVendedor(tx: Tx, id: string): Promise<Vendedor> {
   const v = await tx.vendedor.findUnique({ where: { id } });
@@ -354,4 +355,27 @@ export async function moverDocumento(s: Sessao, d: z.infer<typeof esquemaMoverDo
     const restantes = await tx.vendedor.count({ where: { pessoaId: origemId } });
     return { pessoaDestinoId: destino.id, vendas: cotas.length, origemFicouVazia: restantes === 0, jaEstava: false };
   }, { timeout: 60_000 });
+}
+
+/**
+ * Corrige o nome de um CPF/CNPJ cadastrado errado (ex.: o CPF da Keila cadastrado com o nome do Lucas).
+ * Pode corrigir junto o nome da pessoa (o que aparece nas listas, extrato e folha). Fica registrado.
+ * Comissões já calculadas guardam o nome da época na memória de cálculo; o titular (a pessoa) é o mesmo.
+ */
+export async function corrigirNome(s: Sessao, d: z.infer<typeof esquemaCorrigirNome>) {
+  exigir(s, 'vendedores', 'editar');
+  const nome = d.nome.replace(/\s+/g, ' ').trim().toUpperCase();
+  return prisma.$transaction(async (tx) => {
+    const v = await exigirVendedor(tx, d.vendedorId);
+    const pessoa = await tx.pessoa.findUniqueOrThrow({ where: { id: v.pessoaId } });
+    if (v.nome === nome && (!d.tambemPessoa || pessoa.nome === nome)) throw new ErroDeDominio('O nome já é este.');
+    await tx.vendedor.update({ where: { id: v.id }, data: { nome, nomeNormalizado: normalizarNome(nome) } });
+    if (d.tambemPessoa) await tx.pessoa.update({ where: { id: pessoa.id }, data: { nome, nomeNormalizado: normalizarNome(nome) } });
+    await auditar(tx, {
+      sessao: s, acao: 'ALTERACAO', entidade: 'Vendedor', entidadeId: v.id,
+      antes: { nome: v.nome, nomePessoa: pessoa.nome }, depois: { nome, nomePessoa: d.tambemPessoa ? nome : pessoa.nome },
+      contexto: { operacao: 'corrigir nome', motivo: d.motivo },
+    });
+    return { pessoaId: pessoa.id };
+  });
 }

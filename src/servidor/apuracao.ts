@@ -72,7 +72,7 @@ export async function apurarCota(tx: Tx, cotaId: string, agora = new Date()): Pr
   };
   const cota = await tx.cota.findUniqueOrThrow({
     where: { id: cotaId },
-    include: { snapCategoria: true, snapSegmento: true, snapModalidadeFlex: true, snapVendedor: { include: { pessoa: true } } },
+    include: { snapCategoria: true, snapSegmento: true, snapModalidadeFlex: true, snapVendedor: { include: { pessoa: true } }, snapExpertVendedor: { include: { pessoa: true } }, snapExpertCategoria: true },
   });
   const pendencias: PendenciaAtual[] = [];
   const credito = dec(cota.credito);
@@ -127,6 +127,24 @@ export async function apurarCota(tx: Tx, cotaId: string, agora = new Date()): Pr
       }
       entradaDestinos.push({ destino, titular, tabela });
     }
+    // Expert sobre o Veterano: o CNPJ Expert da mesma pessoa recebe o % da categoria dele (tabela de
+    // vendedor da categoria Expert) sobre esta venda, pago por quem a categoria dele disser.
+    if (cota.snapExpertVendedor && cota.snapExpertCategoria && cota.snapExpertPagaPelaWr !== null) {
+      const ev = cota.snapExpertVendedor;
+      const titular: TitularResolvido = { pessoaId: ev.pessoaId, vendedorId: ev.id, nome: ev.pessoa.nome };
+      titulares.set('EXPERT', titular);
+      const tabela = await tabelaVigente(tx, {
+        destino: 'VENDEDOR', segmentoId: cota.snapSegmento!.id, categoriaId: cota.snapExpertCategoria.id,
+        titularVendedorId: ev.id, titularPessoaId: null, data: cota.dataVenda,
+      });
+      if (tabela) {
+        valoresPorDestino.set('EXPERT', tabela.faixas.map((f) => ({ parcela: f.parcela, percentual: f.percentual, valor: aplicarPercentual(base, f.percentual) })));
+      }
+      entradaDestinos.push({
+        destino: 'EXPERT' as const, titular, tabela, pagaPelaWr: cota.snapExpertPagaPelaWr,
+        categoria: { codigo: cota.snapExpertCategoria.codigo, nome: cota.snapExpertCategoria.nome },
+      });
+    }
     const r = calcularComissoes({
       cota: { id: cota.id, credito, dataVenda: cota.dataVenda, parcelasPagas: cota.parcelasPagas },
       categoria,
@@ -144,7 +162,8 @@ export async function apurarCota(tx: Tx, cotaId: string, agora = new Date()): Pr
   await sincronizarComissoes(tx, cota, desejadas, pendencias, resumo, agora);
 
   // ---------- 3. Estornos ----------
-  await sincronizarEstornos(tx, cota, { categoria, titulares, valoresPorDestino }, pendencias, resumo);
+  const expertCodigo = cota.snapExpertVendedorId && cota.snapExpertCategoria ? cota.snapExpertCategoria.codigo : null;
+  await sincronizarEstornos(tx, cota, { categoria, expertCodigo, titulares, valoresPorDestino }, pendencias, resumo);
 
   // ---------- 4. Pendências ----------
   await sincronizarPendencias(tx, cota.id, pendencias, agora);
@@ -160,7 +179,7 @@ export async function apurarCota(tx: Tx, cotaId: string, agora = new Date()): Pr
   return resumo;
 }
 
-type CotaApuracao = Prisma.CotaGetPayload<{ include: { snapCategoria: true; snapSegmento: true; snapModalidadeFlex: true; snapVendedor: { include: { pessoa: true } } } }>;
+type CotaApuracao = Prisma.CotaGetPayload<{ include: { snapCategoria: true; snapSegmento: true; snapModalidadeFlex: true; snapVendedor: { include: { pessoa: true } }; snapExpertVendedor: { include: { pessoa: true } }; snapExpertCategoria: true } }>;
 
 async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: LinhaComissao[], pendencias: PendenciaAtual[], resumo: ResumoApuracao, agora: Date) {
   const ativas = await tx.comissaoApurada.findMany({ where: { cotaId: cota.id, status: { not: 'CANCELADA' } }, orderBy: { criadoEm: 'asc' } });
@@ -272,7 +291,7 @@ async function criarComissao(tx: Tx, cotaId: string, d: LinhaComissao, ajusteDeI
   await tx.comissaoApurada.create({
     data: {
       cotaId, parcela: d.parcela, destino: d.destino as DestinoComissao,
-      titularVendedorId: d.destino === 'VENDEDOR' ? d.titular.vendedorId : null,
+      titularVendedorId: d.destino === 'VENDEDOR' || d.destino === 'EXPERT' ? d.titular.vendedorId : null,
       titularPessoaId: d.titular.pessoaId, tabelaId: d.tabelaId,
       base: paraTexto(d.base), percentual: paraTexto(d.percentual), valor: paraTexto(valor),
       pagaPelaWr: d.pagaPelaWr, status: liberada ? 'LIBERADA' : 'PREVISTA',
@@ -285,7 +304,7 @@ async function criarComissao(tx: Tx, cotaId: string, d: LinhaComissao, ajusteDeI
 async function sincronizarEstornos(
   tx: Tx,
   cota: CotaApuracao,
-  ctx: { categoria: CategoriaDaVenda | null; titulares: Map<Destino, TitularResolvido | null>; valoresPorDestino: Map<Destino, Array<{ parcela: number; valor: Dec; percentual: Dec }>> },
+  ctx: { categoria: CategoriaDaVenda | null; expertCodigo: string | null; titulares: Map<Destino, TitularResolvido | null>; valoresPorDestino: Map<Destino, Array<{ parcela: number; valor: Dec; percentual: Dec }>> },
   pendencias: PendenciaAtual[],
   resumo: ResumoApuracao,
 ) {
@@ -321,7 +340,8 @@ async function sincronizarEstornos(
   /** Precedência: exceção do vendedor › percentual do participante (categoria/supervisão/gerência) › padrão. */
   const regraPara = (destino: Destino, participante: string): RegraEstornoResolvida | null => {
     const vigentes = regras.filter((r) => r.vigenteDe <= dataCanc && (r.vigenteAte === null || r.vigenteAte >= dataCanc));
-    const excecao = destino === 'VENDEDOR' ? vigentes.find((r) => r.titularVendedorId === cota.snapVendedorId) : undefined;
+    const docDoTitular = destino === 'VENDEDOR' ? cota.snapVendedorId : destino === 'EXPERT' ? cota.snapExpertVendedorId : null;
+    const excecao = docDoTitular ? vigentes.find((r) => r.titularVendedorId === docDoTitular) : undefined;
     const doParticipante = vigentes.find((r) => r.titularVendedorId === null && r.participante === participante);
     const padrao = resolverVigente(vigentes.filter((x) => x.titularVendedorId === null && x.participante === null), dataCanc);
     const r = excecao ?? doParticipante ?? padrao;
@@ -331,8 +351,8 @@ async function sincronizarEstornos(
   const r = calcularEstornos({
     cota: { id: cota.id, cancelada: true, dataCancelamento: dataCanc, parcelasPagas: cota.parcelasPagas, recuperacao: cota.snapRecuperacao, origemDataCancelamento: cota.origemDataCancelamento },
     config,
-    destinos: destinosDaCategoria(ctx.categoria).map((destino) => {
-      const participante = destino === 'VENDEDOR' ? ctx.categoria!.codigo : destino;
+    destinos: [...destinosDaCategoria(ctx.categoria), ...(ctx.expertCodigo ? ['EXPERT' as const] : [])].map((destino) => {
+      const participante = destino === 'VENDEDOR' ? ctx.categoria!.codigo : destino === 'EXPERT' ? ctx.expertCodigo! : destino;
       return {
       destino,
       participante,

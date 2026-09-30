@@ -60,6 +60,7 @@ async function recongelarUma(tx: Tx, s: Sessao | null, cotaId: string, motivo: s
     snapVendedorId: cota.snapVendedorId, snapCategoriaId: cota.snapCategoriaId, snapSegmentoId: cota.snapSegmentoId, snapModalidadeFlexId: cota.snapModalidadeFlexId,
     snapEquipeId: cota.snapEquipeId, snapGerenciaId: cota.snapGerenciaId, snapSupervisorPessoaId: cota.snapSupervisorPessoaId, snapGerentePessoaId: cota.snapGerentePessoaId,
     snapRecuperacao: cota.snapRecuperacao,
+    snapExpertVendedorId: cota.snapExpertVendedorId, snapExpertCategoriaId: cota.snapExpertCategoriaId, snapExpertPagaPelaWr: cota.snapExpertPagaPelaWr,
   };
   const mudou = (Object.keys(antes) as Array<keyof typeof antes>).some((k) => antes[k] !== snap[k]) || vendedorId !== cota.vendedorId;
   if (!mudou) return false;

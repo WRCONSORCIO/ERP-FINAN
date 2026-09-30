@@ -16,6 +16,51 @@ export interface SnapshotResolvido {
   snapPagaPelaWr: boolean | null;
   snapGeraSupervisao: boolean | null;
   snapGeraGerencia: boolean | null;
+  snapExpertVendedorId: string | null;
+  snapExpertCategoriaId: string | null;
+  snapExpertPagaPelaWr: boolean | null;
+}
+
+/**
+ * Regra da WR: o CNPJ de categoria que "recebe sobre outros documentos" (Expert) não vende; recebe o %
+ * da categoria dele sobre as vendas dos outros CNPJ da mesma pessoa (Veterano), desde a data em que a
+ * categoria passou a valer. Resolvido na DATA DA VENDA e congelado junto com o resto.
+ */
+type DocumentoComCategorias = {
+  id: string; tipoDocumento: string; desligadoEm: Date | null;
+  categorias: Array<{ vigenteDe: Date; vigenteAte: Date | null; categoria: { id: string; pagaPelaWr: boolean; recebeSobreOutrosDocumentos: boolean } }>;
+};
+
+/** Parte pura: dado os documentos da pessoa, qual recebe sobre a venda feita por `vendedorId` nesta data. */
+export function expertNaData(
+  documentos: readonly DocumentoComCategorias[], vendedorId: string, dataVenda: Date, categoriaDaVenda: { recebeSobreOutrosDocumentos: boolean } | null,
+): Pick<SnapshotResolvido, 'snapExpertVendedorId' | 'snapExpertCategoriaId' | 'snapExpertPagaPelaWr'> {
+  const vazio = { snapExpertVendedorId: null, snapExpertCategoriaId: null, snapExpertPagaPelaWr: null };
+  const vendedor = documentos.find((d) => d.id === vendedorId);
+  if (!vendedor || !categoriaDaVenda || categoriaDaVenda.recebeSobreOutrosDocumentos) return vazio;
+  for (const o of documentos) {
+    if (o.id === vendedorId || o.tipoDocumento !== vendedor.tipoDocumento) continue;
+    if (o.desligadoEm && o.desligadoEm <= dataVenda) continue;
+    const cat = resolverVigente(o.categorias, dataVenda)?.categoria;
+    if (cat?.recebeSobreOutrosDocumentos) return { snapExpertVendedorId: o.id, snapExpertCategoriaId: cat.id, snapExpertPagaPelaWr: cat.pagaPelaWr };
+  }
+  return vazio;
+}
+
+export async function documentosDaPessoa(db: Db, pessoaId: string): Promise<DocumentoComCategorias[]> {
+  return db.vendedor.findMany({
+    where: { pessoaId },
+    select: { id: true, tipoDocumento: true, desligadoEm: true, categorias: { select: { vigenteDe: true, vigenteAte: true, categoria: { select: { id: true, pagaPelaWr: true, recebeSobreOutrosDocumentos: true } } } } },
+    orderBy: { criadoEm: 'asc' },
+  });
+}
+
+export async function resolverExpert(
+  db: Db, vendedorId: string, dataVenda: Date, categoriaDaVenda: { recebeSobreOutrosDocumentos: boolean } | null,
+): Promise<Pick<SnapshotResolvido, 'snapExpertVendedorId' | 'snapExpertCategoriaId' | 'snapExpertPagaPelaWr'>> {
+  const v = await db.vendedor.findUnique({ where: { id: vendedorId }, select: { pessoaId: true } });
+  if (!v) return { snapExpertVendedorId: null, snapExpertCategoriaId: null, snapExpertPagaPelaWr: null };
+  return expertNaData(await documentosDaPessoa(db, v.pessoaId), vendedorId, dataVenda, categoriaDaVenda);
 }
 
 /** Modalidade usada quando a venda vem sem flex no arquivo. */
@@ -37,6 +82,7 @@ export async function resolverSnapshot(db: Db, p: { vendedorId: string | null; d
     snapVendedorId: p.vendedorId, snapCategoriaId: null, snapSegmentoId: null, snapModalidadeFlexId: null,
     snapEquipeId: null, snapGerenciaId: null, snapSupervisorPessoaId: null, snapGerentePessoaId: null, snapRecuperacao: false,
     snapPagaPelaWr: null, snapGeraSupervisao: null, snapGeraGerencia: null,
+    snapExpertVendedorId: null, snapExpertCategoriaId: null, snapExpertPagaPelaWr: null,
   };
 
   const segmentos = await db.segmento.findMany({ where: { ativo: true } });
@@ -65,6 +111,7 @@ export async function resolverSnapshot(db: Db, p: { vendedorId: string | null; d
     snap.snapGeraGerencia = cat.geraGerencia;
   }
   snap.snapRecuperacao = recuperacoes.some((r) => vigenteEm(p.dataVenda, r.inicio, r.fim));
+  Object.assign(snap, await resolverExpert(db, p.vendedorId, p.dataVenda, cat));
 
   const aloc = resolverVigente(alocacoes, p.dataVenda);
   if (aloc) {

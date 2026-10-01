@@ -18,7 +18,8 @@ describe('comissão liberada pelo relatório da administradora, não pela base d
 
     await importarRelatorio(admin, administradoraId, relatorioWr([rel('3500', 1, '10/07/2026'), rel('3500', 3, '10/09/2026')]));
     const vend = valores((await comissoesDa(cota.id)).filter((c) => c.destino === 'VENDEDOR'));
-    expect(vend).toEqual(['VENDEDOR:1:750.00:LIBERADA', 'VENDEDOR:2:600.00:PREVISTA', 'VENDEDOR:3:450.00:LIBERADA', 'VENDEDOR:4:450.00:PREVISTA']);
+    // A 2ª (que exige conferência) venceu em julho, antes do início do sistema: venda "velha", não entra.
+    expect(vend).toEqual(['VENDEDOR:1:750.00:LIBERADA', 'VENDEDOR:3:450.00:LIBERADA', 'VENDEDOR:4:450.00:PREVISTA']);
     const datas = (await comissoesDa(cota.id)).filter((c) => c.status === 'LIBERADA' && c.destino === 'VENDEDOR').map((c) => c.liberadaEm?.toISOString().slice(0, 10));
     expect(datas).toEqual(['2026-07-10', '2026-09-10']);
   });

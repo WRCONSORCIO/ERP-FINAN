@@ -112,20 +112,15 @@ describe('2ª parcela do Iniciante: a WR não recebe, então pagar o vendedor ex
     expect((await conferenciasPendentes(admin)).map((p) => p.cota.cota)).toEqual(['2']);
   });
 
-  it('cliente "velho" (muitas parcelas pagas): a 2ª não vai para a conferência e não é paga', async () => {
+  it('venda "velha" (a 2ª venceu antes de setembro/2026): não vai para a conferência e não é paga', async () => {
     const { admin, administradoraId, cat } = await preparar();
     const est = await estrutura(admin, 'A');
-    await vendedor(admin, { nome: 'Camila', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId });
-    // 4 pagas: ainda recente (2ª + até 2 parcelas depois). 5 e 22 pagas: velhas.
-    await importar(admin, administradoraId, csv([linha('1', 4), linha('2', 5), linha('3', 22)]));
+    await vendedor(admin, { nome: 'Camila', tipo: 'CPF', doc: '52998224725', categoriaId: cat.INICIANTE, equipeId: est.equipeId, desde: '2026-01-01' });
+    const venda = (cota: string, data: string, pagas: number) => ({ ...linha(cota, pagas), venda: data });
+    // Venda em 31/08 → 2ª vence em setembro: entra. Venda em 31/07 → 2ª venceu em agosto: velha. Venda de março com 7 pagas: velha.
+    await importar(admin, administradoraId, csv([venda('1', '31/08/2026', 2), venda('2', '31/07/2026', 3), venda('3', '10/03/2026', 7)]));
     expect((await conferenciasPendentes(admin)).map((p) => p.cota.cota)).toEqual(['1']);
     for (const cota of ['2', '3']) expect((await doVendedor(cota, 2)).filter((c) => c.status !== 'CANCELADA')).toHaveLength(0);
-    // Estava na lista e o cliente seguiu pagando: sai da lista e a linha é cancelada com o motivo.
-    await importar(admin, administradoraId, csv([linha('1', 5), linha('2', 5), linha('3', 22)]));
-    expect(await conferenciasPendentes(admin)).toHaveLength(0);
-    const seg = await doVendedor('1', 2);
-    expect(seg.map((c) => c.status)).toEqual(['CANCELADA']);
-    expect(seg[0]?.motivoCancelamento).toMatch(/Venda antiga/);
     // Exceção: decisão manual de pagar continua valendo.
     const c3 = await prisma.cota.findFirstOrThrow({ where: { cota: '3' } });
     await decidirConferencia(admin, { cotaId: c3.id, parcela: 2, decisao: 'PAGAR', motivo: 'combinado' });

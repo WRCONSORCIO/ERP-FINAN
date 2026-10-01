@@ -194,10 +194,18 @@ function desligamentoDo(cota: CotaApuracao, vendedorId: string | null): Date | n
 }
 
 /**
- * Até quantas parcelas DEPOIS da que exige conferência ela ainda é perguntada. Ex.: 2ª parcela com limite 2 →
- * pergunta enquanto o cliente tiver até 4 parcelas pagas em sequência; com 5 ou mais, a venda é "velha".
+ * O sistema começou a pagar em outubro/2026 pelo que o cliente pagou em setembro/2026. Parcela que exige
+ * conferência e venceu ANTES deste mês é de venda "velha": já foi resolvida fora do sistema, não se confere.
+ * A base de clientes não traz a data de pagamento de cada parcela; vale o vencimento (a Nª parcela vence N−1
+ * meses depois da venda: a 2ª, no mês seguinte ao da venda).
  */
-export const LIMITE_CONFERENCIA = 2;
+export const INICIO_CONFERENCIA = { ano: 2026, mes: 9 };
+
+/** Mês (ano*12+mês) em que a parcela vence: a 1ª no mês da venda, a 2ª no seguinte… */
+export function mesDeVencimento(dataVenda: Date, parcela: number): number {
+  return dataVenda.getUTCFullYear() * 12 + dataVenda.getUTCMonth() + 1 + (parcela - 1);
+}
+const MES_INICIO_CONFERENCIA = INICIO_CONFERENCIA.ano * 12 + INICIO_CONFERENCIA.mes;
 
 interface Conferencia {
   desejadas: LinhaComissao[];
@@ -209,7 +217,7 @@ interface Conferencia {
   canceladaNaoPaga: Set<string>;
   /** Chaves que não serão pagas porque o vendedor foi desligado. */
   desligadoNaoPaga: Set<string>;
-  /** Chaves de venda antiga (cliente já pagou muitas parcelas): a 2ª é de meses atrás e não vai para a conferência. */
+  /** Chaves de venda antiga (a parcela venceu antes de o sistema começar): não vai para a conferência. */
   antigaNaoPaga: Set<string>;
   /** Parcela → data da decisão "pagar" (é ela que libera a parcela que a WR não recebe). */
   pagarEm: Map<number, Date>;
@@ -232,8 +240,8 @@ async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaC
     if (cota.cancelada && decisao !== 'PAGAR') { r.canceladaNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
     // Vendedor desligado não recebe mais: a parcela não vai para a conferência.
     if (desligamentoDo(cota, l.titular.vendedorId) && decisao !== 'PAGAR') { r.desligadoNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
-    // Cliente "velho": já pagou bem mais parcelas em sequência; a parcela é de meses atrás e não se confere mais.
-    if (emSequencia > l.parcela + LIMITE_CONFERENCIA && decisao !== 'PAGAR') { r.antigaNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
+    // Cliente "velho": a parcela venceu antes de o sistema começar (setembro/2026); já foi resolvida fora dele.
+    if (mesDeVencimento(cota.dataVenda, l.parcela) < MES_INICIO_CONFERENCIA && decisao !== 'PAGAR') { r.antigaNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
     if (decisao !== 'PAGAR' && decisao !== 'AGUARDAR') r.aguardando.add(`VENDEDOR|${l.parcela}`);
     return true;
   });
@@ -378,7 +386,7 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
         : conferencia.naoPagar.has(chave) ? 'Conferência manual: decidido não pagar esta parcela ao vendedor'
           : conferencia.canceladaNaoPaga.has(chave) ? 'Venda cancelada: a parcela que a WR não recebe da administradora não é paga ao vendedor'
             : conferencia.desligadoNaoPaga.has(chave) ? 'Vendedor desligado: não recebe mais comissão'
-              : conferencia.antigaNaoPaga.has(chave) ? 'Venda antiga: o cliente já pagou muitas parcelas; a parcela que a WR não recebe não entra mais na conferência'
+              : conferencia.antigaNaoPaga.has(chave) ? 'Venda antiga: a parcela venceu antes de setembro/2026 (início do sistema) e não entra na conferência'
               : 'Reapuração: comissão não se aplica mais a esta venda';
       for (const c of abertas) await cancelar(c, motivo);
       if (d && (d.liberada || !encerrada(d.titular.vendedorId))) {

@@ -193,6 +193,12 @@ function desligamentoDo(cota: CotaApuracao, vendedorId: string | null): Date | n
   return v && v.status === 'DESLIGADO' ? (v.desligadoEm ?? new Date(0)) : null;
 }
 
+/**
+ * Até quantas parcelas DEPOIS da que exige conferência ela ainda é perguntada. Ex.: 2ª parcela com limite 2 →
+ * pergunta enquanto o cliente tiver até 4 parcelas pagas em sequência; com 5 ou mais, a venda é "velha".
+ */
+export const LIMITE_CONFERENCIA = 2;
+
 interface Conferencia {
   desejadas: LinhaComissao[];
   /** Chaves destino|parcela que aguardam decisão: não liberam sozinhas. */
@@ -203,12 +209,14 @@ interface Conferencia {
   canceladaNaoPaga: Set<string>;
   /** Chaves que não serão pagas porque o vendedor foi desligado. */
   desligadoNaoPaga: Set<string>;
+  /** Chaves de venda antiga (cliente já pagou muitas parcelas): a 2ª é de meses atrás e não vai para a conferência. */
+  antigaNaoPaga: Set<string>;
   /** Parcela → data da decisão "pagar" (é ela que libera a parcela que a WR não recebe). */
   pagarEm: Map<number, Date>;
 }
 
 async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaComissao[]): Promise<Conferencia> {
-  const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set(), canceladaNaoPaga: new Set(), desligadoNaoPaga: new Set(), pagarEm: new Map() };
+  const r: Conferencia = { desejadas, aguardando: new Set(), naoPagar: new Set(), canceladaNaoPaga: new Set(), desligadoNaoPaga: new Set(), antigaNaoPaga: new Set(), pagarEm: new Map() };
   if (cota.snapParcelasConferencia.length === 0) return r;
   const registros = await tx.conferenciaParcela.findMany({ where: { cotaId: cota.id } });
   const emSequencia = cota.parcelasPagas - cota.parcelasAntecipadas;
@@ -224,6 +232,8 @@ async function regrasDeConferencia(tx: Tx, cota: CotaApuracao, desejadas: LinhaC
     if (cota.cancelada && decisao !== 'PAGAR') { r.canceladaNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
     // Vendedor desligado não recebe mais: a parcela não vai para a conferência.
     if (desligamentoDo(cota, l.titular.vendedorId) && decisao !== 'PAGAR') { r.desligadoNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
+    // Cliente "velho": já pagou bem mais parcelas em sequência; a parcela é de meses atrás e não se confere mais.
+    if (emSequencia > l.parcela + LIMITE_CONFERENCIA && decisao !== 'PAGAR') { r.antigaNaoPaga.add(`VENDEDOR|${l.parcela}`); return false; }
     if (decisao !== 'PAGAR' && decisao !== 'AGUARDAR') r.aguardando.add(`VENDEDOR|${l.parcela}`);
     return true;
   });
@@ -368,6 +378,7 @@ async function sincronizarComissoes(tx: Tx, cota: CotaApuracao, desejadas: Linha
         : conferencia.naoPagar.has(chave) ? 'Conferência manual: decidido não pagar esta parcela ao vendedor'
           : conferencia.canceladaNaoPaga.has(chave) ? 'Venda cancelada: a parcela que a WR não recebe da administradora não é paga ao vendedor'
             : conferencia.desligadoNaoPaga.has(chave) ? 'Vendedor desligado: não recebe mais comissão'
+              : conferencia.antigaNaoPaga.has(chave) ? 'Venda antiga: o cliente já pagou muitas parcelas; a parcela que a WR não recebe não entra mais na conferência'
               : 'Reapuração: comissão não se aplica mais a esta venda';
       for (const c of abertas) await cancelar(c, motivo);
       if (d && (d.liberada || !encerrada(d.titular.vendedorId))) {
